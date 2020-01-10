@@ -28,7 +28,7 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
 
     //When a new command is received, capture inputs and become busy
     when(io.cmd.fire()) {
-        io.cmd.ready := 0.U
+        io.cmd.ready := Bool(false)
         length := io.cmd.bits.rs1
         previous := io.cmd.bits.rs2
         rd := io.cmd.bits.inst.rd
@@ -37,7 +37,7 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
 
     //After responding, become ready for new commands
     when(io.resp.fire()) {
-        io.cmd.ready := 1.U
+        io.cmd.ready := Bool(true)
         length := Reg(unset)
         previous := Reg(unset)
     }
@@ -85,7 +85,7 @@ class WithFixedWeightCombinations extends Config((site, here, up) => {
 
 /**
  * Add this into the example project's RocketConfigs.scala file:
-class FixedWeightCombinationsConfig extends Config(
+class FixedWeightCombinationsRocketConfig extends Config(
     new WithTop ++
     new WithBootROM ++
     new freechips.rocketchip.subsystem.WithInclusiveCache ++
