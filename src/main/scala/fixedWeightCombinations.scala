@@ -15,7 +15,7 @@ class FixedWeightCombos(opcodes: OpcodeSet)(implicit p: Parameters) extends Lazy
 
 class FixedWeightCombosImp(outer: FixedWeightCombos)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) {
 
-    val unset = ((1 << xLen) - 1).U(xLen.W)
+    val unset = ~(0.U)
 
     //Get length of binary strings and previous string from the source registers
     val length = Reg(unset) //Length of binary string
