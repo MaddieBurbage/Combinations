@@ -1,7 +1,7 @@
 //Simple Combinational Accelerator, based on the fortyTwo accelerator template.
 //Works for string lengths up to xLen - 1 (31? 63?)
 // Maddie Burbage, 2020
-package fixedWeightCombos
+package fixedWeightCombinations
 
 import Chisel._
 import freechips.rocketchip.tile._ //For LazyRoCC
@@ -9,11 +9,11 @@ import freechips.rocketchip.config._ //For Config
 import freechips.rocketchip.diplomacy._ //For LazyModule
 import freechips.rocketchip.rocket.{TLBConfig, HellaCacheReq} //something and level one cache
 
-class FixedWeightCombos(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
-    override lazy val module = new FixedWeightCombosImp(this)
+class FixedWeightCombinations(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
+    override lazy val module = new FixedWeightCombinationsImp(this)
 }
 
-class FixedWeightCombosImp(outer: FixedWeightCombos)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) {
+class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) {
 
     val unset = ~(0.U)
 
@@ -50,7 +50,7 @@ class FixedWeightCombosImp(outer: FixedWeightCombos)(implicit p: Parameters) ext
     val indexTrailed = trailed & previous
 
     val subtracted = (indexShift & previous) - 1.U
-    val fixed = Mux(subtracted & 1.U, subtracted, 0.U)
+    val fixed = Mux((subtracted & 1.U)===1.U, subtracted, 0.U)
 
     val result = previous + indexTrailed - fixed
 
@@ -65,7 +65,7 @@ class FixedWeightCombosImp(outer: FixedWeightCombos)(implicit p: Parameters) ext
     when(result >> length === 0.U) {
         io.resp.bits.data := ~ (0.U)
     } .otherwise {
-        io.resp.bits.data := result(length - 1.U, 0)
+        io.resp.bits.data := result % stopper
     }
 
 
@@ -76,20 +76,22 @@ class FixedWeightCombosImp(outer: FixedWeightCombos)(implicit p: Parameters) ext
 
 }
 
-class WithFixedWeightCombos extends Config((site, here, up) => {
+class WithFixedWeightCombinations extends Config((site, here, up) => {
     case BuildRoCC => Seq((p: Parameters) => {
-        val fixedWeightCombos = LazyModule.apply(new FixedWeightCombos(OpcodeSet.custom0) (p))
-        fixedWeightCombos
+        val fixedWeightCombinations = LazyModule.apply(new FixedWeightCombinations(OpcodeSet.custom0) (p))
+        fixedWeightCombinations
     })
 })
 
 /**
  * Add this into the example project's RocketConfigs.scala file:
-class FixedWeightCombosConfig extends Config(
+class FixedWeightCombinationsConfig extends Config(
     new WithTop ++
     new WithBootROM ++
     new freechips.rocketchip.subsystem.WithInclusiveCache ++
-    new FixedWeightCombos.WithFixedWeightCombos ++
+    new fixedWeightCombinations.WithFixedWeightCombinations ++
+    new freechips.rocketchip.subsystem.WithNBigCores(1) ++
+    new freechips.rocketchip.system.BaseConfig
 )
 
  */
