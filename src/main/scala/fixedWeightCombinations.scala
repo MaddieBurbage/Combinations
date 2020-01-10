@@ -43,29 +43,29 @@ class FixedWeightCombosImp(outer: FixedWeightCombos)(implicit p: Parameters) ext
     }
 
     //Calculations
-    val trimmed = previous & (previous + 1)
-    val trailed = trimmed ^ (trimmed - 1)
+    val trimmed = previous & (previous + 1.U)
+    val trailed = trimmed ^ (trimmed - 1.U)
 
-    val indexShift = trailed + 1
+    val indexShift = trailed + 1.U
     val indexTrailed = trailed & previous
 
-    val subtracted = (indexShift & previous) - 1
+    val subtracted = (indexShift & previous) - 1.U
     val fixed = Mux(SInt(subtracted) > 0, subtracted, 0.U) //make signed?
 
     val result = previous + indexTrailed - fixed
 
     //Response not ready until result value has changed from the default
-    when(result =/= unset - 1) {
+    when(result =/= unset - 1.U) {
         io.resp.valid := Bool(true)
     }
 
-    val stopper = 1 << length
+    val stopper = 1.U << length
 
     //Fill result with all 1s if finished, same response as divide by zero has
     when(result >> length === 0.U) {
         io.resp.bits.data := ~ (0.U)
     } .otherwise {
-        io.resp.bits.data := result(length - 1, 0)
+        io.resp.bits.data := result(length - 1.U, 0)
     }
 
 
