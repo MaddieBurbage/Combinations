@@ -50,7 +50,7 @@ class FixedWeightCombosImp(outer: FixedWeightCombos)(implicit p: Parameters) ext
     val indexTrailed = trailed & previous
 
     val subtracted = (indexShift & previous) - 1.U
-    val fixed = Mux(SInt(subtracted) > 0, subtracted, 0.U) //make signed?
+    val fixed = Mux(subtracted & 1.U, subtracted, 0.U)
 
     val result = previous + indexTrailed - fixed
 
