@@ -15,32 +15,36 @@ class FixedWeightCombinations(opcodes: OpcodeSet)(implicit p: Parameters) extend
 
 class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) {
 
-    val unset = ~(0.U)
+    val s_idle :: s_resp :: Nil = Enum(Bits(), 2)
+    val state = Reg(init = s_idle) //state starts idle, is remembered
+
+    //Communication values based on the accelerator's state
+    io.cmd.ready := (state === s_idle)
+    io.resp.valid := (state === s_resp)
+    io.busy := (state =/= s_idle)
+
 
     //Get length of binary strings and previous string from the source registers
-    val length = Reg(unset) //Length of binary string
-    val previous = Reg(unset) //Previous
+    val length = Reg(io.cmd.bits.rs1) //Length of binary string
+    val previous = Reg(io.cmd.bits.rs2) //Previous
+
     //Output the new string to the destination register
     val rd = Reg(io.cmd.bits.inst.rd) //Output location
 
-    //Busy when not ready for a new instruction
-    io.busy := ~io.cmd.ready
 
     //When a new command is received, capture inputs and become busy
     when(io.cmd.fire()) {
-        io.cmd.ready := Bool(false)
+        state := s_resp
         length := io.cmd.bits.rs1
         previous := io.cmd.bits.rs2
         rd := io.cmd.bits.inst.rd
-        io.resp.valid := Bool(false)
     }
 
     //After responding, become ready for new commands
     when(io.resp.fire()) {
-        io.cmd.ready := Bool(true)
-        length := Reg(unset)
-        previous := Reg(unset)
+        state := s_idle
     }
+
 
     //Calculations
     val trimmed = previous & (previous + 1.U)
@@ -54,16 +58,11 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
 
     val result = previous + indexTrailed - fixed
 
-    //Response not ready until result value has changed from the default
-    when(result =/= unset - 1.U) {
-        io.resp.valid := Bool(true)
-    }
-
     val stopper = 1.U << length
 
     //Fill result with all 1s if finished, same response as divide by zero has
     when(result >> length === 0.U) {
-        io.resp.bits.data := ~ (0.U)
+        io.resp.bits.data := ~(0.U)
     } .otherwise {
         io.resp.bits.data := result % stopper
     }
