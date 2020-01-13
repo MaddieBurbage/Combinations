@@ -13,7 +13,7 @@ class FixedWeightCombinations(opcodes: OpcodeSet)(implicit p: Parameters) extend
     override lazy val module = new FixedWeightCombinationsImp(this)
 }
 
-class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) {
+class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) with HasCoreParameters{
 
     val s_idle :: s_resp :: Nil = Enum(Bits(), 2)
     val state = Reg(init = s_idle) //state starts idle, is remembered
@@ -27,6 +27,10 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
     //Get length of binary strings and previous string from the source registers
     val length = Reg(io.cmd.bits.rs1) //Length of binary string
     val previous = Reg(io.cmd.bits.rs2) //Previous
+
+    when(length > xLen.U) {
+	length := xLen.U
+    }
 
     //Output the new string to the destination register
     val rd = Reg(io.cmd.bits.inst.rd) //Output location
@@ -54,15 +58,16 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
     val indexTrailed = trailed & previous
 
     val subtracted = (indexShift & previous) - 1.U
-    val fixed = Mux((subtracted & 1.U)===1.U, subtracted, 0.U)
+    val fixed = Mux((subtracted & (1.U<<(xLen-1)))===1.U, subtracted, 0.U)
 
     val result = previous + indexTrailed - fixed
 
-    val stopper = 1.U << length
+    val stopper = 1.U(1.W) << (length(18, 0))
 
     //Fill result with all 1s if finished, same response as divide by zero has
-    when(result >> length === 0.U) {
-        io.resp.bits.data := ~(0.U)
+    when(result >> length =/= 0.U) {
+	io.resp.bits.data := result
+        //io.resp.bits.data := ~(0.U)
     } .otherwise {
         io.resp.bits.data := result % stopper
     }
