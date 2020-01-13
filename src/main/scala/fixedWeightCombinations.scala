@@ -1,5 +1,5 @@
 //Simple Combinational Accelerator, based on the fortyTwo accelerator template.
-//Works for string lengths up to xLen - 1 (31? 63?)
+//Works for string lengths up to 32
 // Maddie Burbage, 2020
 package fixedWeightCombinations
 
@@ -25,12 +25,9 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
 
 
     //Get length of binary strings and previous string from the source registers
-    val length = Reg(io.cmd.bits.rs1) //Length of binary string
+    val length = Reg(io.cmd.bits.rs1(4,0)) //Length of binary string
     val previous = Reg(io.cmd.bits.rs2) //Previous
 
-    when(length > xLen.U) {
-	length := xLen.U
-    }
 
     //Output the new string to the destination register
     val rd = Reg(io.cmd.bits.inst.rd) //Output location
@@ -39,13 +36,15 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
     //When a new command is received, capture inputs and become busy
     when(io.cmd.fire()) {
         state := s_resp
-        length := io.cmd.bits.rs1
+        length := (io.cmd.bits.rs1(4,0))
         previous := io.cmd.bits.rs2
         rd := io.cmd.bits.inst.rd
     }
 
     //After responding, become ready for new commands
     when(io.resp.fire()) {
+//      printf("result, %b", result);
+	//printf("trimmed %d, trailed %d\n indexShift %d, indexTrailed %d\n subtracted %d, fixed %d\n result %d, stopper %d\n\n", trimmed, trailed, indexShift, indexTrailed, subtracted, fixed, result, stopper)
         state := s_idle
     }
 
@@ -58,19 +57,14 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
     val indexTrailed = trailed & previous
 
     val subtracted = (indexShift & previous) - 1.U
-    val fixed = Mux((subtracted & (1.U<<(xLen-1)))===1.U, subtracted, 0.U)
+    val fixed = Mux(subtracted.asSInt < 0.S, 0.U, subtracted)
 
     val result = previous + indexTrailed - fixed
 
-    val stopper = 1.U(1.W) << (length(18, 0))
+    val stopper = 1.U(1.W) << length
 
     //Fill result with all 1s if finished, same response as divide by zero has
-    when(result >> length =/= 0.U) {
-	io.resp.bits.data := result
-        //io.resp.bits.data := ~(0.U)
-    } .otherwise {
-        io.resp.bits.data := result % stopper
-    }
+    io.resp.bits.data := Mux(result >> length =/= 0.U, ~(0.U), result % stopper)
 
 
     //Response
