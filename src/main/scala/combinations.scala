@@ -16,10 +16,9 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     val s_idle :: s_resp :: Nil = Enum(Bits(), 2)
     val state = Reg(init = s_idle) //state starts idle, is remembered
+    
 
-    val fixedWeightModule = Module(new FixedWeight()(p))
-    val lexicographicModule = Module(new Lexicographic()(p))
-
+    val submodules = Array(Module(new FixedWeight()(p)), Module(new Lexicographic()(p)), Module(new GeneralCombinations()(p)))
 
     //Instruction inputs
     val length = Reg(io.cmd.bits.rs1(4,0)) //Length of binary string
@@ -30,10 +29,10 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     val function = Reg(io.cmd.bits.inst.funct) //Specific operation
 
     //Set up submodule inputs
-    fixedWeightModule.io.length := length
-    fixedWeightModule.io.previous := previous
-    lexicographicModule.io.length := length
-    lexicographicModule.io.previous := previous
+    for(x <- submodules) {
+	x.io.length := length
+	x.io.previous := previous
+    }
 
     //State-based communication values
     io.cmd.ready := (state === s_idle)
@@ -47,10 +46,13 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
         rd := io.cmd.bits.inst.rd
         function := io.cmd.bits.inst.funct
     }
+    
 
+    val lookups = ((1 to 3).toArray) map (_.U)
     //Obtain accelerator output from the correct submodule for the function
     io.resp.bits.data := MuxLookup(function, fixedWeightModule.io.out,
-            Array(0.U->fixedWeightModule.io.out, 1.U->lexicographicModule.io.out))
+            lookups.map(_-> submodules[i]))
+//Array(0.U->submodules[0].io.out, 1.U->lexicographicModule.io.out))
 
     io.resp.bits.rd := rd
     io.resp.valid := (state === s_resp)
@@ -88,10 +90,24 @@ class FixedWeight()(implicit p: Parameters) extends Submodule {
     io.out := Mux(result >> io.length =/= 0.U, ~(0.U), result % stopper)
 }
 
-//Generates the lexicographically-next binary string
+//Generates the lexicographically-next binary string, up to a length of 32
 class Lexicographic()(implicit p: Parameters) extends Submodule {
     val result = io.previous + 1.U
     io.out := Mux(((result >> io.length) & 1.U) === 1.U, ~(0.U), result)
+}
+
+class GeneralCombinations()(implicit p: Parameters) extends Submodule {
+    
+    //Calculations
+    val trailed = io.previous ^ (io.previous + 1.U)
+    val mask = Mux(trailed > 3.U, trailed, ~(0.U))
+    val lastPosition = (mask >> 1.U) + 1.U
+    val first = Mux(trailed > 3.U, 1.U & previous, 1.U & ~previous)
+    val shifted = (previous & mask) >> 1.U
+    val rotated = Mux(first === 1.U, shifted | lastPosition, shifted)
+    val result = rotated | (~mask & previous)
+
+    io.out := Mux(result === ((1.U << length) - 1.U), ~(0.U), result)
 }
 
 //Base class for this accelerator's submodules

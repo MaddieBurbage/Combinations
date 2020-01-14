@@ -19,30 +19,29 @@
 int next_weighted_combo(int n, int last, int *out) {
     int next, temp;
     next = last & (last + 1);
-    printf("%d\n", next);
-
+    printf("next %d\n", next);
+    
     temp = next ^ (next - 1);
-    printf("%d\n", temp);
+    printf("temp %d\n", temp);
 
     next = temp + 1;
-    printf("%d\n", next);
+    printf("next %d\n", next);
     temp = temp & last;
-    printf("%d\n", temp);
-
+    printf("temp %d\n", temp);
+    
     next = (next & last) - 1;
-    printf("%d\n", next);
+    printf("next %d\n", next);    
     next = (next > 0)? next : 0;
-    printf("%d\n", next);
+    printf("next %d\n", next);   
 
     next = last + temp - next;
-    printf("%d\n", next);
+    printf("next %d\n", next);    
 
     if(next / (1 << n) > 0) {
         return -1;
     }
 
     *out = next % (1 << n);
-    printf("%d\n", *out);
     return 1;
 }
 
