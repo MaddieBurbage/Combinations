@@ -1,6 +1,5 @@
 //Simple Combinational Accelerator, based on the fortyTwo accelerator template.
-//Works for string lengths up to 32
-// Maddie Burbage, 2020
+// (c) Maddie Burbage, 2020
 package fixedWeightCombinations
 
 import Chisel._
@@ -13,25 +12,23 @@ class FixedWeightCombinations(opcodes: OpcodeSet)(implicit p: Parameters) extend
     override lazy val module = new FixedWeightCombinationsImp(this)
 }
 
-class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer) with HasCoreParameters{
+//Generates a fixed-weight binary string based on a previous string of the same
+//weight and length. Binary strings up to length 32 will work.
+class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer){
 
     val s_idle :: s_resp :: Nil = Enum(Bits(), 2)
     val state = Reg(init = s_idle) //state starts idle, is remembered
 
-    //Communication values based on the accelerator's state
-    io.cmd.ready := (state === s_idle)
-    io.resp.valid := (state === s_resp)
-    io.busy := (state =/= s_idle)
-
-
-    //Get length of binary strings and previous string from the source registers
+    //Instruction inputs
     val length = Reg(io.cmd.bits.rs1(4,0)) //Length of binary string
-    val previous = Reg(io.cmd.bits.rs2) //Previous
+    val previous = Reg(io.cmd.bits.rs2) //Previous binary string
 
-
-    //Output the new string to the destination register
+    //Secondary Inputs
     val rd = Reg(io.cmd.bits.inst.rd) //Output location
 
+    //State-based communication values
+    io.cmd.ready := (state === s_idle)
+    io.busy := (state =/= s_idle)
 
     //When a new command is received, capture inputs and become busy
     when(io.cmd.fire()) {
@@ -41,15 +38,8 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
         rd := io.cmd.bits.inst.rd
     }
 
-    //After responding, become ready for new commands
-    when(io.resp.fire()) {
-//      printf("result, %b", result);
-	//printf("trimmed %d, trailed %d\n indexShift %d, indexTrailed %d\n subtracted %d, fixed %d\n result %d, stopper %d\n\n", trimmed, trailed, indexShift, indexTrailed, subtracted, fixed, result, stopper)
-        state := s_idle
-    }
 
-
-    //Calculations
+    //Calculations to generate the next combination
     val trimmed = previous & (previous + 1.U)
     val trailed = trimmed ^ (trimmed - 1.U)
 
@@ -63,12 +53,18 @@ class FixedWeightCombinationsImp(outer: FixedWeightCombinations)(implicit p: Par
 
     val stopper = 1.U(1.W) << length
 
-    //Fill result with all 1s if finished, same response as divide by zero has
+
+    //Fill result with all 1s if finished
     io.resp.bits.data := Mux(result >> length =/= 0.U, ~(0.U), result % stopper)
-
-
-    //Response
     io.resp.bits.rd := rd
+    io.resp.valid := (state === s_resp)
+
+    //After responding, become ready for new commands
+    when(io.resp.fire()) {
+        state := s_idle
+    }
+
+    //These features not used
     io.interrupt := Bool(false)
     io.mem.req.valid := Bool(false)
 
@@ -83,6 +79,7 @@ class WithFixedWeightCombinations extends Config((site, here, up) => {
 
 /**
  * Add this into the example project's RocketConfigs.scala file:
+
 class FixedWeightCombinationsRocketConfig extends Config(
     new WithTop ++
     new WithBootROM ++
