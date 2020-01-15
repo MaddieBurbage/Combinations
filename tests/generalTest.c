@@ -33,30 +33,15 @@ int nextGeneralCombination(int n, int last, int *out) {
 }
 
 
-static inline int testAccelerator(int inputString, int length) {
-    int outputString, answer, mismatches;
-
-    mismatches = 0;
-
-    //For each string in the sequence, compare the c output to the accelerator's
-    while(nextGeneralCombination(length, inputString, &answer) != -1) {
-        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 2);
-	if(outputString == answer) {
-	  printf("Next string: %d, accelerator found %d\n", answer, outputString);
-	} else {
-	  printf("ERROR: next string: %d, accelerator found %d\n", answer, outputString);
-	  mismatches++;
-	}
-	inputString = answer;
-    }
-    return mismatches; //Mismatches is 0 for success, otherwise it's positive
-}
 
 int main(void) {
     int inputString = 0b0;
     int length = 4;
+    int answer;
 
-
-    int testResult = testAccelerator(inputString, length);
-    return testResult;
+    answer=inputString;
+    while(nextGeneralCombination(length, answer, &answer) != -1) {
+        printf("Next: %d\n", answer);
+    }
+    return 0;
 }

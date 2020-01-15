@@ -27,7 +27,6 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     //Secondary Inputs
     val rd = Reg(io.cmd.bits.inst.rd) //Output location
     val function = Reg(io.cmd.bits.inst.funct) //Specific operation
-
     //Set up submodule inputs
     for(x <- submodules) {
 	x.io.length := length
@@ -40,6 +39,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     //When a new command is received, capture inputs and become busy
     when(io.cmd.fire()) {
+	printf("function: %x", function)
         state := s_resp
         length := (io.cmd.bits.rs1(4,0))
         previous := io.cmd.bits.rs2
@@ -104,13 +104,16 @@ class GeneralCombinations()(implicit p: Parameters) extends Submodule {
 
     //Calculations
     val trailed = io.previous ^ (io.previous + 1.U)
-    val mask = Mux(trailed > 3.U, trailed, ~(0.U))
-    val lastPosition = (mask >> 1.U) + 1.U
+    val mask = Mux(trailed > 3.U, trailed, ~(0.U(5.W)))
+
+    val lastTemporary =  (mask >> 1.U) + 1.U
+    val lastLimit = 1.U << (io.length - 1.U)
+    val lastPosition = Mux(lastTemporary > lastLimit, lastLimit, lastTemporary)
     val first = Mux(trailed > 3.U, 1.U & io.previous, 1.U & ~io.previous)
     val shifted = (io.previous & mask) >> 1.U
     val rotated = Mux(first === 1.U, shifted | lastPosition, shifted)
     val result = rotated | (~mask & io.previous)
-
+    printf("result: %d\n", result);
     io.out := Mux(result === ((1.U << io.length) - 1.U), ~(0.U), result)
 }
 
