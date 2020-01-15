@@ -16,7 +16,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     val s_idle :: s_resp :: Nil = Enum(Bits(), 2)
     val state = Reg(init = s_idle) //state starts idle, is remembered
-    
+
 
     val submodules = Array(Module(new FixedWeight()(p)), Module(new Lexicographic()(p)), Module(new GeneralCombinations()(p)))
 
@@ -46,9 +46,11 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
         rd := io.cmd.bits.inst.rd
         function := io.cmd.bits.inst.funct
     }
-    
 
-    val lookups = ((1 to 3).toArray) map (_.U)
+    val lookups = Array(a.length)
+    while(i < submodules.length) {
+        lookups(i) = (i.U, a(i))
+    }
     //Obtain accelerator output from the correct submodule for the function
     io.resp.bits.data := MuxLookup(function, fixedWeightModule.io.out,
             lookups.map(_-> submodules[i]))
@@ -96,8 +98,10 @@ class Lexicographic()(implicit p: Parameters) extends Submodule {
     io.out := Mux(((result >> io.length) & 1.U) === 1.U, ~(0.U), result)
 }
 
+
+//Generates the next binary string of a certain length based on the cool-er ordering
 class GeneralCombinations()(implicit p: Parameters) extends Submodule {
-    
+
     //Calculations
     val trailed = io.previous ^ (io.previous + 1.U)
     val mask = Mux(trailed > 3.U, trailed, ~(0.U))
