@@ -47,14 +47,14 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
         function := io.cmd.bits.inst.funct
     }
 
-    val lookups = Array(a.length)
-    while(i < submodules.length) {
-        lookups(i) = (i.U, a(i))
-    }
+//    val lookups = Array.ofDim[(UInt, UInt)](submodules.length)
+    val lookups = Array(0.U->submodules(0).io.out,1.U->submodules(1).io.out, 2.U->submodules(2).io.out)
+//    val i = 0
+//    while(i < submodules.length) {
+//        lookups(i) = (i.U, submodules(i).io.out)
+//    }
     //Obtain accelerator output from the correct submodule for the function
-    io.resp.bits.data := MuxLookup(function, fixedWeightModule.io.out,
-            lookups.map(_-> submodules[i]))
-//Array(0.U->submodules[0].io.out, 1.U->lexicographicModule.io.out))
+    io.resp.bits.data := MuxLookup(function, submodules(0).io.out, lookups)
 
     io.resp.bits.rd := rd
     io.resp.valid := (state === s_resp)
@@ -106,12 +106,12 @@ class GeneralCombinations()(implicit p: Parameters) extends Submodule {
     val trailed = io.previous ^ (io.previous + 1.U)
     val mask = Mux(trailed > 3.U, trailed, ~(0.U))
     val lastPosition = (mask >> 1.U) + 1.U
-    val first = Mux(trailed > 3.U, 1.U & previous, 1.U & ~previous)
-    val shifted = (previous & mask) >> 1.U
+    val first = Mux(trailed > 3.U, 1.U & io.previous, 1.U & ~io.previous)
+    val shifted = (io.previous & mask) >> 1.U
     val rotated = Mux(first === 1.U, shifted | lastPosition, shifted)
-    val result = rotated | (~mask & previous)
+    val result = rotated | (~mask & io.previous)
 
-    io.out := Mux(result === ((1.U << length) - 1.U), ~(0.U), result)
+    io.out := Mux(result === ((1.U << io.length) - 1.U), ~(0.U), result)
 }
 
 //Base class for this accelerator's submodules
