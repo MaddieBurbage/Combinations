@@ -100,18 +100,22 @@ class Lexicographic()(implicit p: Parameters) extends Submodule {
 class GeneralCombinations()(implicit p: Parameters) extends Submodule {
 
     //Calculations
-    val trailed = io.previous ^ (io.previous + 1.U)
-    val mask = Mux(trailed > 3.U, trailed, ~(0.U(5.W)))
-
-    val lastTemporary =  (mask >> 1.U) + 1.U
+    val trimmed = io.previous(31,1) | (io.previous(31,1) - 1.U)
+    val trailed = trimmed ^ (trimmed + 1.U)
+    val mask = Wire(UInt(32.W))
+    mask := (trailed << 1.U) + 1.U
+    
+    val lastTemp = Wire(UInt(32.W))
+    lastTemp :=  trailed + 1.U
     val lastLimit = 1.U << (io.length - 1.U)
-    val lastPosition = Mux(lastTemporary > lastLimit, lastLimit, lastTemporary)
-    val first = Mux(trailed > 3.U, 1.U & io.previous, 1.U & ~io.previous)
+    val lastPosition = Mux(lastTemp > lastLimit || lastTemp === 0.U, lastLimit, lastTemp)
+    val cap = 1.U << io.length
+    val first = Mux(mask < cap, 1.U & io.previous, 1.U & ~io.previous)
     val shifted = (io.previous & mask) >> 1.U
     val rotated = Mux(first === 1.U, shifted | lastPosition, shifted)
     val result = rotated | (~mask & io.previous)
-    printf("result: %d\n", result);
-    io.out := Mux(result === ((1.U << io.length) - 1.U), ~(0.U), result)
+
+    io.out := Mux(result === (cap - 1.U), ~(0.U), result)
 }
 
 //Generates the next binary string within a weight range, based on cool-est ordering
