@@ -27,10 +27,11 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     //Secondary Inputs
     val rd = Reg(io.cmd.bits.inst.rd) //Output location
     val function = Reg(io.cmd.bits.inst.funct) //Specific operation
+
     //Set up submodule inputs
     for(x <- submodules) {
-	x.io.length := length
-	x.io.previous := previous
+	   x.io.length := length
+       x.io.previous := previous
     }
 
     //State-based communication values
@@ -41,10 +42,6 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     when(io.cmd.fire()) {
 	printf("function: %x", function)
         state := s_resp
-        length := (io.cmd.bits.rs1(4,0))
-        previous := io.cmd.bits.rs2
-        rd := io.cmd.bits.inst.rd
-        function := io.cmd.bits.inst.funct
     }
 
 //    val lookups = Array.ofDim[(UInt, UInt)](submodules.length)
@@ -115,6 +112,35 @@ class GeneralCombinations()(implicit p: Parameters) extends Submodule {
     val result = rotated | (~mask & io.previous)
     printf("result: %d\n", result);
     io.out := Mux(result === ((1.U << io.length) - 1.U), ~(0.U), result)
+}
+
+//Generates the next binary string within a weight range, based on cool-est ordering
+class RangedCombinations(server: CaptureWeights)(implicit p: Parameters) extends Submodule {
+
+}
+
+class CaptureWeights(outer: CombinationsImp user: RangedCombinations)(implicit p: Parameters) extends Module {
+    val io = IO(new Bundle {
+        val minWeight = Input(UInt(5.W))
+        val maxWeight = Input(UInt(5.W))
+        val success = Output(UInt(2.W))
+    })
+
+    val lastMinWeight = Reg(UInt(5.W))
+    val lastMaxWeight = Reg(UInt(5.W))
+    val inUse = Reg(UInt(32.W))
+
+    when(CombinationsImp.io.cmd.fire()) {
+        when(inUse === 0.U) {
+            lastMinWeight = io.minWeight
+            lastMaxWeight = io.maxWeight
+            inUse = 1.U
+            io.success = 0.U
+        }
+        .otherwise {
+            io.success = ~(0.U)
+        }
+    }
 }
 
 //Base class for this accelerator's submodules
