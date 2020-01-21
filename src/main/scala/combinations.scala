@@ -19,7 +19,8 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
 
     val submodules = Array(Module(new FixedWeight()(p)), Module(new Lexicographic()(p)), Module(new GeneralCombinations()(p)))
-
+    val captureWeights = Module(new CaptureWeights()(p))
+    val rangedCombinations = Module(new RangedCombinations()(p))
     //Instruction inputs
     val length = Reg(io.cmd.bits.rs1(4,0)) //Length of binary string
     val previous = Reg(io.cmd.bits.rs2) //Previous binary string
@@ -30,7 +31,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     //Set up submodule inputs
     for(x <- submodules) {
-	   x.io.length := length
+       x.io.length := length
        x.io.previous := previous
     }
 
@@ -43,6 +44,11 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 	printf("function: %x", function)
         state := s_resp
     }
+    
+    length := (io.cmd.bits.rs1(4,0))
+    previous := io.cmd.bits.rs2
+    rd := io.cmd.bits.inst.rd
+    function := io.cmd.bits.inst.funct
 
 //    val lookups = Array.ofDim[(UInt, UInt)](submodules.length)
     val lookups = Array(0.U->submodules(0).io.out,1.U->submodules(1).io.out, 2.U->submodules(2).io.out)
@@ -86,13 +92,13 @@ class FixedWeight()(implicit p: Parameters) extends Submodule {
     val stopper = 1.U(1.W) << io.length
 
     //Fill result with all 1s if finished
-    io.out := Mux(result >> io.length =/= 0.U, ~(0.U), result % stopper)
+    io.out := Mux(result >> io.length =/= 0.U, Fill(64,1.U), result % stopper)
 }
 
 //Generates the lexicographically-next binary string, up to a length of 32
 class Lexicographic()(implicit p: Parameters) extends Submodule {
     val result = io.previous + 1.U
-    io.out := Mux(((result >> io.length) & 1.U) === 1.U, ~(0.U), result)
+    io.out := Mux(((result >> io.length) & 1.U) === 1.U, Fill(64,1.U), result)
 }
 
 
@@ -115,44 +121,42 @@ class GeneralCombinations()(implicit p: Parameters) extends Submodule {
     val rotated = Mux(first === 1.U, shifted | lastPosition, shifted)
     val result = rotated | (~mask & io.previous)
 
-    io.out := Mux(result === (cap - 1.U), ~(0.U), result)
+    io.out := Mux(result === (cap - 1.U), Fill(64,1.U), result)
 }
 
 //Generates the next binary string within a weight range, based on cool-est ordering
-class RangedCombinations(server: CaptureWeights)(implicit p: Parameters) extends Submodule {
+class RangedCombinations()(implicit p: Parameters) extends Submodule {
 
 }
 
-class CaptureWeights(outer: CombinationsImp user: RangedCombinations)(implicit p: Parameters) extends Module {
+class CaptureWeights()(implicit p: Parameters) extends Module {
     val io = IO(new Bundle {
         val minWeight = Input(UInt(5.W))
         val maxWeight = Input(UInt(5.W))
-        val success = Output(UInt(2.W))
+        val success = Output(UInt(64.W))
     })
 
     val lastMinWeight = Reg(UInt(5.W))
     val lastMaxWeight = Reg(UInt(5.W))
-    val inUse = Reg(UInt(32.W))
-
-    when(CombinationsImp.io.cmd.fire()) {
-        when(inUse === 0.U) {
-            lastMinWeight = io.minWeight
-            lastMaxWeight = io.maxWeight
-            inUse = 1.U
-            io.success = 0.U
-        }
-        .otherwise {
-            io.success = ~(0.U)
-        }
+    val inUse = Reg(UInt(1.W))
+    when(inUse === 0.U) {
+        lastMinWeight := io.minWeight
+        lastMaxWeight := io.maxWeight
+        inUse := 1.U
+        io.success := 0.U
     }
+    .otherwise {
+        io.success := Fill(64, 1.U)
+    }
+
 }
 
 //Base class for this accelerator's submodules
 abstract class Submodule()(implicit p: Parameters) extends Module {
     val io = IO(new Bundle {
         val length = Input(UInt(5.W))
-        val previous = Input(UInt(32.W))
-        val out = Output(UInt(32.W))
+        val previous = Input(UInt(64.W))
+        val out = Output(UInt(64.W))
     })
 }
 

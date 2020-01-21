@@ -5,7 +5,7 @@ LDFLAGS=-static -nostdlib -nostartfiles -lgcc
 
 
 # Change this to add tests
-PROGRAMS = fixedWeightCombinations generalCombinations
+PROGRAMS = fixedWeightCombinations generalCombinations timeTests
 
 default: $(addsuffix .riscv,$(PROGRAMS))
 

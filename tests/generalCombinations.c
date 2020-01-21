@@ -58,8 +58,8 @@ static inline int testAccelerator(int inputString, int length) {
 }
 
 int main(void) {
-    int inputString = 0b0111;
-    int length = 16;
+    int inputString = 0b1111;
+    int length = 4;
 
 
     int testResult = testAccelerator(inputString, length);
