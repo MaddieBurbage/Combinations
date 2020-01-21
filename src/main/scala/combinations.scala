@@ -8,10 +8,14 @@ import freechips.rocketchip.config._ //For Config
 import freechips.rocketchip.diplomacy._ //For LazyModule
 import freechips.rocketchip.rocket.{TLBConfig, HellaCacheReq} //For connections
 
+
+//Wrapper for the accelerator
 class Combinations(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
     override lazy val module = new CombinationsImp(this)
 }
 
+
+//Main accelerator class, directs instruction inputs to submodules for computation
 class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer){
 
     val s_idle :: s_work :: s_resp :: Nil = Enum(Bits(), 3)
@@ -42,7 +46,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     memoryCombinations.io.length := length
     memoryCombinations.io.address := previous
 
-    //Set up Unique submodule inputs
+    //Set up unique submodule inputs
     rangedCombinations.io.minWeight := captureWeights.io.minWeight
     rangedCombinations.io.maxWeight := captureWeights.io.maxWeight
     captureWeights.io.reset := Mux(function === 3.U && io.resp.bits.data === ~(0.U(64.W)), 1.U, 0.U)
@@ -50,7 +54,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
 
 
-    //Accelerator State
+    //Accelerator State (working, responding, or idle)
     io.cmd.ready := (state === s_idle)
 
     when(io.cmd.fire()) {
@@ -115,6 +119,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
 }
 
+
 //Generates a fixed-weight binary string based on a previous string of the same
 //weight and length. Binary strings up to length 32 will work.
 class FixedWeight()(implicit p: Parameters) extends Module {
@@ -137,6 +142,7 @@ class FixedWeight()(implicit p: Parameters) extends Module {
     //Fill result with all 1s if finished
     io.out := Mux(result >> io.length =/= 0.U, Fill(64,1.U), result % stopper)
 }
+
 
 //Generates all binary strings based on an input and "saves" it to memory.
 //Strings of length up to 32 work.
@@ -207,6 +213,7 @@ class MemoryFixedCombinations()(implicit p: Parameters) extends Module() {
     }
 }
 
+
 //Generates the lexicographically-next binary string, up to a length of 32
 class Lexicographic()(implicit p: Parameters) extends Module {
     val io = IO(new subIO)
@@ -221,24 +228,27 @@ class GeneralCombinations()(implicit p: Parameters) extends Module {
     val io = IO(new subIO)
 
     //Calculations
-    val trimmed = io.previous(31,1) | (io.previous(31,1) - 1.U)
-    val trailed = trimmed ^ (trimmed + 1.U)
-    val mask = Wire(UInt(32.W))
+    //Mask up to the right-most '01' before the end of the string
+    val trimmed = io.previous(31,1) | (io.previous(31,1) - 1.U) //Remove trailing 0s
+    val trailed = trimmed ^ (trimmed + 1.U) //Make a mask for the right-most 01 onwards 
+    val mask = Wire(UInt(32.W)) //Shift the mask to a 32 bit wire instead of 31
     mask := (trailed << 1.U) + 1.U
 
+    //Find the last spot in the mask, to use for rotating the 0th bit
     val lastTemp = Wire(UInt(32.W))
-    lastTemp :=  trailed + 1.U
-    val lastLimit = 1.U << (io.length - 1.U)
-    val lastPosition = Mux(lastTemp > lastLimit || lastTemp === 0.U, lastLimit, lastTemp)
+    lastTemp :=  trailed + 1.U //If there is a valid 01, this is the last bit
+    val lastLimit = 1.U << (io.length - 1.U) //Otherwise use the final bit
+    val lastPosition = Mux(lastTemp > lastLimit || lastTemp === 0.U, lastLimit, lastTemp) //Choose which bit position to use
 
-    val cap = 1.U << io.length
-    val first = Mux(mask < cap, 1.U & io.previous, 1.U & ~io.previous)
-    val shifted = (io.previous & mask) >> 1.U
-    val rotated = Mux(first === 1.U, shifted | lastPosition, shifted)
-    val result = rotated | (~mask & io.previous)
+    val cap = 1.U << io.length //One bit beyond the width of the string
+    val first = Mux(mask < cap, 1.U & io.previous, 1.U & ~io.previous) //Flip the first bit if there is no valid 01
+    val shifted = (io.previous & mask) >> 1.U //Shift the masked region
+    val rotated = Mux(first === 1.U, shifted | lastPosition, shifted) //Move the first bit to the end of the shifting
+    val result = rotated | (~mask & io.previous) //Combine the rotated and non-rotated parts of the string
 
-    io.out := Mux(result === (cap - 1.U), Fill(64,1.U), result)
+    io.out := Mux(result === (cap - 1.U), Fill(64,1.U), result) //If finished, the result is all 1s
 }
+
 
 //Generates the next binary string within a weight range, based on cool-est ordering
 class RangedCombinations()(implicit p: Parameters) extends Module {
@@ -276,6 +286,7 @@ class RangedCombinations()(implicit p: Parameters) extends Module {
     io.out := Mux(result === (cap - 1.U), Fill(64,1.U), result)
 }
 
+
 //Stores the min and max weight used for ranged combinations (function 3). The
 //cycle of ranged combinations must complete before loading new weights
 class CaptureWeights()(implicit p: Parameters) extends Module {
@@ -311,6 +322,7 @@ class CaptureWeights()(implicit p: Parameters) extends Module {
     io.maxWeight := lastMaxWeight
 }
 
+
 //Base class for this accelerator's submodule IOs
 class subIO extends Bundle {
     val length = Input(UInt(5.W))
@@ -318,11 +330,13 @@ class subIO extends Bundle {
     val out = Output(UInt(64.W))
 }
 
+//IO for the ranged accelerator
 class wideIO extends subIO {
     val minWeight = Input(UInt(5.W))
     val maxWeight = Input(UInt(5.W))
 }
 
+//Setup for the accelerator
 class WithCombinations extends Config((site, here, up) => {
     case BuildRoCC => Seq((p: Parameters) => {
         val Combinations = LazyModule.apply(new Combinations(OpcodeSet.custom0) (p))
