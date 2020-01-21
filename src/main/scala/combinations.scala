@@ -17,21 +17,20 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     val s_idle :: s_work :: s_resp :: Nil = Enum(Bits(), 3)
     val state = Reg(init = s_idle) //state starts idle, is remembered
 
-
+    //Submodules for functions: FixedWeight, Lexicographic, General, Ranged, CaptureWeights, Memory
     val submodules = Array(Module(new FixedWeight()(p)), Module(new Lexicographic()(p)), Module(new GeneralCombinations()(p)))
     val rangedCombinations = Module(new RangedCombinations()(p))
     val captureWeights = Module(new CaptureWeights()(p))
     val memoryCombinations = Module(new MemoryFixedCombinations()(p))
 
     //Instruction inputs
-    val length = Reg(io.cmd.bits.rs1(4,0)) //Length of binary string
-    val previous = Reg(io.cmd.bits.rs2) //Previous binary string
+    val length = Reg(init = io.cmd.bits.rs1(4,0)) //Length of binary string
+    val previous = Reg(init = io.cmd.bits.rs2) //Previous binary string
+    val rd = Reg(init = io.cmd.bits.inst.rd) //Output location
+    val function = Reg(init = io.cmd.bits.inst.funct) //Specific operation
 
-    //Secondary Inputs
-    val rd = Reg(io.cmd.bits.inst.rd) //Output location
-    val function = Reg(io.cmd.bits.inst.funct) //Specific operation
 
-    //Set up submodule inputs
+    //Set up main submodule inputs
     for(x <- submodules) {
        x.io.length := length
        x.io.previous := previous
@@ -43,17 +42,17 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     memoryCombinations.io.length := length
     memoryCombinations.io.address := previous
 
-    //Unique submodule inputs
+    //Set up Unique submodule inputs
     rangedCombinations.io.minWeight := captureWeights.io.minWeight
     rangedCombinations.io.maxWeight := captureWeights.io.maxWeight
     captureWeights.io.reset := Mux(function === 3.U && io.resp.bits.data === ~(0.U(64.W)), 1.U, 0.U)
     captureWeights.io.set := Mux(function === 4.U, 1.U, 0.U)
 
 
-    //State-based communication values
+
+    //Accelerator State
     io.cmd.ready := (state === s_idle)
 
-    //When a new command is received, capture inputs and become busy
     when(io.cmd.fire()) {
 	when(function === 3.U) {
 	    state := s_work
@@ -61,6 +60,11 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 	} .otherwise {
             state := s_resp
 	}
+	length := (io.cmd.bits.rs1(4,0))
+	previous := io.cmd.bits.rs2
+	rd := io.cmd.bits.inst.rd
+	function := io.cmd.bits.inst.funct
+
     } .otherwise {
 	memoryCombinations.io.start := 0.U
     }
@@ -69,28 +73,17 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 	state := s_resp
     }
 
-    length := (io.cmd.bits.rs1(4,0))
-    previous := io.cmd.bits.rs2
-    rd := io.cmd.bits.inst.rd
-    function := io.cmd.bits.inst.funct
-
-    //Obtain accelerator output from the correct submodule for the function
-    val lookups = Array(0.U->submodules(0).io.out,1.U->submodules(1).io.out, 2.U->submodules(2).io.out,
-        3.U->memoryCombinations.io.out, 4.U->rangedCombinations.io.out, 5.U->captureWeights.io.success)
-//  val newLookups = lookups.zipWithIndex.map(_.swap)}
-    io.resp.bits.data := MuxLookup(function, submodules(0).io.out, lookups)
-
-    io.resp.bits.rd := rd
-    io.resp.valid := state === s_resp
-
-    //After responding, become ready for new commands
     when(io.resp.fire()) {
         state := s_idle
     }
 
-    //Always false
-    io.interrupt := Bool(false)
+    //Accelerator response
+    val lookups = Array(0.U->submodules(0).io.out,1.U->submodules(1).io.out, 2.U->submodules(2).io.out,
+        3.U->memoryCombinations.io.out, 4.U->rangedCombinations.io.out, 5.U->captureWeights.io.success)
+    io.resp.bits.data := MuxLookup(function, submodules(0).io.out, lookups)
 
+    io.resp.bits.rd := rd
+    io.resp.valid := state === s_resp
 
     //Memory request interface
     io.mem.req.valid := memoryCombinations.io.working
@@ -116,6 +109,10 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     } .otherwise {
 	memoryCombinations.io.mem.reqFire := 0.U
     }
+
+    //Always false
+    io.interrupt := Bool(false)
+
 }
 
 //Generates a fixed-weight binary string based on a previous string of the same
