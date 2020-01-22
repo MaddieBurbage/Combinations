@@ -8,116 +8,119 @@ import freechips.rocketchip.config._ //For Config
 import freechips.rocketchip.diplomacy._ //For LazyModule
 import freechips.rocketchip.rocket.{TLBConfig, HellaCacheReq} //For outward connections
 
-
 //Wrapper for the accelerator
 class Combinations(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(opcodes) {
     override lazy val module = new CombinationsImp(this)
 }
 
-
 //Main accelerator class, directs instruction inputs to submodules for computation
 class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer){
-
-    val s_idle :: s_work :: s_resp :: Nil = Enum(Bits(), 3)
+    //Accelerator States idle, busy (accessing memory), resp (sending response)
+    val s_idle :: s_busy :: s_resp :: Nil = Enum(Bits(), 3)
     val state = Reg(init = s_idle) //state starts idle, is remembered
+    val tryStore = state === s_busy
 
     //Instruction inputs
     val length = Reg(init = io.cmd.bits.rs1(4,0)) //Length of binary string
     val previous = Reg(init = io.cmd.bits.rs2) //Previous binary string
+    val address = previous //Renamed for readability
     val rd = Reg(init = io.cmd.bits.inst.rd) //Output location
     val function = Reg(init = io.cmd.bits.inst.funct) //Specific operation
 
-    //Submodules for functions: FixedWeight, Lexicographic, General, Ranged, CaptureWeights, Memory
+    //Submodules for functions: FixedWeight, Lexicographic, General, Ranged, CaptureWeights, Memory (functions 0-5)
     val captureWeights = Module(new CaptureWeights()(p))
-    val memoryCombinations = Module(new MemoryFixedCombinations()(p))
-    val outputs = Array(nextCombination.FixedWeight(length, previous), nextCombination.Lexicographic(length, previous), nextCombination.GeneralCombinations(length, previous),
-                        nextCombination.RangedCombinations(length, previous, captureWeights.io.minWeight, captureWeights.io.maxWeight))
+    val outputs = Array(nextCombination.fixedWeight(length, previous), nextCombination.lexicographic(length, previous), nextCombination.generalCombinations(length, previous),
+                        nextCombination.rangedCombinations(length, previous, captureWeights.io.minWeight, captureWeights.io.maxWeight))
 
-
-
-    //Set up main submodule inputs
+    //Set up submodule inputs
     captureWeights.io.newMin := length
     captureWeights.io.newMax := previous
-    memoryCombinations.io.length := length
-    memoryCombinations.io.address := previous
-
-    //Set up unique submodule inputs
     captureWeights.io.reset := Mux(function === 3.U && io.resp.bits.data === ~(0.U(64.W)), 1.U, 0.U)
     captureWeights.io.set := Mux(function === 4.U, 1.U, 0.U)
 
+    //Command and response setup
+    io.cmd.ready := state === s_idle
+    io.resp.valid := state === s_resp
 
+    //Accelerator response
+    val lookups = Array(0.U->outputs(0),1.U->outputs(1), 2.U->outputs(2),
+        3.U->outputs(3), 4.U->captureWeights.io.success, 5.U->memoryOutputs)
+    io.resp.bits.data := MuxLookup(function, outputs(0), lookups)
+    io.resp.bits.rd := rd
 
-    //Accelerator State (working, responding, or idle)
-    io.cmd.ready := (state === s_idle)
-
+    //Accelerator state control
     when(io.cmd.fire()) {
-	when(function === 5.U) {
-	    state := s_work
-	    memoryCombinations.io.start := 1.U
-	} .otherwise {
+    	when(function > 4.U) {
+    	    state := s_busy
+            summedReturns := 0.U
+            currentAddress := address
+    	} .otherwise {
             state := s_resp
-	}
-	length := (io.cmd.bits.rs1(4,0))
-	previous := io.cmd.bits.rs2
-	rd := io.cmd.bits.inst.rd
-	function := io.cmd.bits.inst.funct
-
-    } .otherwise {
-	memoryCombinations.io.start := 0.U
+    	}
+    	length := (io.cmd.bits.rs1(4,0))
+    	previous := io.cmd.bits.rs2
+    	rd := io.cmd.bits.inst.rd
+    	function := io.cmd.bits.inst.funct
     }
 
-    when(state === s_work && memoryCombinations.io.working === 0.U) {
-	state := s_resp
+    when(tryStore && finished) {
+	    state := s_resp
     }
 
     when(io.resp.fire()) {
         state := s_idle
     }
 
-    //Accelerator response
-    val lookups = Array(0.U->outputs(0),1.U->outputs(1), 2.U->outputs(2),
-        3.U->outputs(3), 4.U->captureWeights.io.success, 5.U->memoryCombinations.io.out)
-    io.resp.bits.data := MuxLookup(function, outputs(0), lookups)
+    //Memory access attempt
+    //Generate next general combination
+    val combinationStream = memoryAccess.cycleCombinations(length, getNext)
+    val summedReturns = Reg(UInt(64.W))
+    val currentAddress = Reg(UInt(64.W))
 
-    io.resp.bits.rd := rd
-    io.resp.valid := state === s_resp
+    //Controls for memory acces
+    val finished = result === Fill(64,1.U)
+    val getNext = tryStore && !finished && !stallStore
+    //Stalled if trying to send request but mem not ready
+    val stallStore = tryStore && !io.mem.req.ready
 
     //Memory request interface
-    io.mem.req.valid := memoryCombinations.io.working
-    io.busy := memoryCombinations.io.working
-    io.mem.req.bits.addr := memoryCombinations.io.currentAddress
-    io.mem.req.bits.tag := memoryCombinations.io.out(9,0) //Change for out-of-order
-    io.mem.req.bits.cmd := 0.U //change when actually storing
-    io.mem.req.bits.data := Bits(0) //Also changed
+    io.mem.req.valid := tryStore
+    io.busy := tryStore
+    io.mem.req.bits.addr := address
+    io.mem.req.bits.tag :=  combinationStream(9,0) //Change for out-of-order
+    io.mem.req.bits.cmd := 0.U //change when actually storing to 1.U?
+    io.mem.req.bits.data := Bits(0) //combinationStream
     io.mem.req.bits.size := log2Ceil(32).U
     io.mem.req.bits.signed := Bool(false)
     io.mem.req.bits.phys := Bool(false)
 
     when(io.mem.resp.valid) {
-	memoryCombinations.io.mem.respValid := 1.U
-	memoryCombinations.io.mem.respData := io.mem.resp.bits.data
-	memoryCombinations.io.mem.respTag := io.mem.resp.bits.tag
-    } .otherwise {
-	memoryCombinations.io.mem.respValid := 0.U
-    }
-
-    when(io.mem.req.fire()) {
-	memoryCombinations.io.mem.reqFire := 1.U
-    } .otherwise {
-	memoryCombinations.io.mem.reqFire := 0.U
+        summedReturns := summedReturns + io.mem.resp.bits.data
+        currentAddress := currentAddress + 32.U
     }
 
     //Always false
     io.interrupt := Bool(false)
-
 }
 
 
 
+//Generates all binary strings based on an input and "saves" it to memory.
+//Strings of length up to 32 work.
+object MemoryAccess {
+    def cycleCombinations(length: UInt, getNext: Bool) {
+        val initial = Wire(UInt(32.W))
+        initial := (1.U << io.length) - 1.U
+        val nextSent = Reg(init = initial)
+        val result = nextCombination.GeneralCombinations(length, nextSent)
+        nextSent := Mux(getNext, result, nextSent)
+    }
+}
+
 object nextCombination {
     //Generates a fixed-weight binary string based on a previous string of the same
     //weight and length. Binary strings up to length 32 will work.
-    def FixedWeight(length: UInt, previous: UInt) = {
+    def fixedWeight(length: UInt, previous: UInt) = {
         //Calculations to generate the next combination
         val trimmed = previous & (previous + 1.U)
         val trailed = trimmed ^ (trimmed - 1.U)
@@ -137,13 +140,13 @@ object nextCombination {
     }
 
     //Generates the lexicographically-next binary string, up to a length of 32
-    def Lexicographic(length: UInt, previous: UInt) = {
+    def lexicographic(length: UInt, previous: UInt) = {
         val result = previous + 1.U
         Mux(((result >>length) & 1.U) === 1.U, Fill(64,1.U), result)
     }
 
     //Generates the next binary string of a certain length based on the cool-er ordering
-    def GeneralCombinations(length: UInt, previous: UInt) = {
+    def generalCombinations(length: UInt, previous: UInt) = {
         //Calculations
         //Mask up to the right-most '01' before the end of the string
         val trimmed = previous(31,1) | (previous(31,1) - 1.U) //Remove trailing 0s
@@ -167,7 +170,7 @@ object nextCombination {
     }
 
     //Generates the next binary string within a weight range, based on cool-est ordering
-    def RangedCombinations(length: UInt, previous: UInt, minWeight: UInt, maxWeight: UInt) = {
+    def rangedCombinations(length: UInt, previous: UInt, minWeight: UInt, maxWeight: UInt) = {
         //Calculations
         val trimmed = previous(31,1) | (previous(31,1) - 1.U)
         val trailed = trimmed ^ (trimmed + 1.U)
@@ -193,61 +196,6 @@ object nextCombination {
         Mux(result === (cap - 1.U), Fill(64,1.U), result)
     }
 }
-
-
-//Generates all binary strings based on an input and "saves" it to memory.
-//Strings of length up to 32 work.
-class MemoryFixedCombinations()(implicit p: Parameters) extends Module() {
-    val io = IO(new Bundle { //address and length
-	    val length = Input(UInt(5.W))
-	    val address = Input(UInt(64.W))
-	    val mem = Input(new Bundle {
-            val respValid = Input(UInt(1.W))
-	        val respTag = Input(UInt(10.W))
-	        val respData = Input(UInt(32.W))
-	        val reqFire = Input(UInt(1.W))
-	    })
-	    val start = Input(UInt(1.W))
-	    val currentAddress = Output(UInt(64.W))
-	    val out = Output(UInt(64.W))
-	    val working = Output(UInt(1.W))
-    })
-
-    val s_store ::  s_idle :: Nil = Enum(Bits(), 2)
-    val state = Reg(init = s_idle)
-
-    val initial = (1.U << io.length) - 1.U
-    val offset = Reg(init = 0.U(64.W))
-    val sum = Reg(init = 0.U(64.W))
-    val nextSent = Reg(UInt(64.W))
-
-    when(io.start === 1.U) {
-        state := s_store
-        nextSent := initial
-	sum := 0.U
-	offset := 0.U
-    }
-
-    when(nextSent === ~(0.U(64.W))) {
-	state := s_idle
-    }
-
-    val result = nextCombination.GeneralCombinations(io.length, nextSent)
-    //Outputs
-    io.out := sum
-    io.currentAddress := io.address + offset
-
-    //Signals to accelerator
-    io.working := state === s_store
-
-    //After getting response from memory
-    when(io.mem.respValid === 1.U) {
-	    sum := sum + io.mem.respData
-	    nextSent := result
-	    offset := offset + 32.U
-    }
-}
-
 
 //Stores the min and max weight used for ranged combinations (function 4). The
 //cycle of ranged combinations must complete before loading new weights
