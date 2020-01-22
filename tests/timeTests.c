@@ -68,11 +68,11 @@ static inline int timeHardware(int inputString, int length, int function) {
 
     outputs = 0;
 
-    ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 2);
+    ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 0);
     while(outputString != -1) {
 	inputString = outputString;
 	outputs++;
-        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 2);
+        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 0);
     }
     return outputs;
 }
@@ -80,7 +80,7 @@ static inline int timeHardware(int inputString, int length, int function) {
 static inline int timeSoftware(int inputString, int length) {
     int outputString, outputs;
     outputs = 0;
-    while(nextGeneralCombination(length, inputString, &outputString) != -1) {
+    while(nextWeightedCombination(length, inputString, &outputString) != -1) {
 	inputString = outputString;
 	outputs++;
     }
@@ -88,11 +88,11 @@ static inline int timeSoftware(int inputString, int length) {
 }
 
 int main(void) {
-    int inputString = 0b1111;
-    int length = 4;
-    int answer = 15;
+    int inputString = 0b00001111;
+    int length = 8;
+    int answer = 69; //general it's 2^length - 1, fixed it's length!/weight!/weight-1!
 
-    int testResult = timeHardware(inputString, length, 2);
+    int testResult = timeHardware(inputString, length, 0);
     //int testResult = timeSoftware(inputString, length);
     return testResult - answer;
 }

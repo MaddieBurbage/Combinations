@@ -41,13 +41,13 @@ int nextGeneralCombination(int n, int last, int *out) {
 static inline int testAccelerator(int length) {
     int sum;
 
-    int placeholder[16];
+    int placeholder[32];
     int i = 0;
     for(i; i < 16; i++) {
 	placeholder[i] = 0;
     }
     
-    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder, 3);
+    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder, 5);
 
     return sum; //Mismatches is 0 for success, otherwise it's positive
 }

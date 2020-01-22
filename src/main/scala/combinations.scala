@@ -24,6 +24,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     val length = Reg(init = io.cmd.bits.rs1(4,0)) //Length of binary string
     val previous = Reg(init = io.cmd.bits.rs2) //Previous binary string
     val address = previous //Renamed for readability
+    val currentAddress = Reg(UInt(64.W))
     val rd = Reg(init = io.cmd.bits.inst.rd) //Output location
     val function = Reg(init = io.cmd.bits.inst.funct) //Specific operation
 
@@ -43,14 +44,15 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     io.resp.valid := state === s_resp
 
     //Accelerator response
+    val summedReturns = Reg(UInt(64.W))
     val lookups = Array(0.U->outputs(0),1.U->outputs(1), 2.U->outputs(2),
-        3.U->outputs(3), 4.U->captureWeights.io.success, 5.U->memoryOutputs)
+        3.U->outputs(3), 4.U->captureWeights.io.success, 5.U->summedReturns)
     io.resp.bits.data := MuxLookup(function, outputs(0), lookups)
     io.resp.bits.rd := rd
 
     //Accelerator state control
     when(io.cmd.fire()) {
-    	when(function > 4.U) {
+    	when(function === 5.U) {
     	    state := s_busy
             summedReturns := 0.U
             currentAddress := address
@@ -63,29 +65,29 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     	function := io.cmd.bits.inst.funct
     }
 
-    when(tryStore && finished) {
-	    state := s_resp
-    }
-
     when(io.resp.fire()) {
         state := s_idle
     }
 
     //Memory access attempt
+    //Stalled if trying to send request but mem not ready
+    val stallStore = tryStore && !io.mem.req.ready    
     //Generate next general combination
-    val combinationStream = memoryAccess.cycleCombinations(length, getNext)
-    val summedReturns = Reg(UInt(64.W))
-    val currentAddress = Reg(UInt(64.W))
+    val getNext = tryStore && !stallStore
+    val combinationStream = memoryAccess.cycleCombinations(length, getNext, io.cmd.fire())
 
     //Controls for memory acces
-    val finished = result === Fill(64,1.U)
-    val getNext = tryStore && !finished && !stallStore
-    //Stalled if trying to send request but mem not ready
-    val stallStore = tryStore && !io.mem.req.ready
+    val finished = tryStore && combinationStream === Fill(64,1.U)
+
+
+    when(tryStore && finished) {
+	    state := s_resp
+    }
+
 
     //Memory request interface
     io.mem.req.valid := tryStore
-    io.busy := tryStore
+    io.busy := state =/= s_idle
     io.mem.req.bits.addr := address
     io.mem.req.bits.tag :=  combinationStream(9,0) //Change for out-of-order
     io.mem.req.bits.cmd := 0.U //change when actually storing to 1.U?
@@ -94,7 +96,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     io.mem.req.bits.signed := Bool(false)
     io.mem.req.bits.phys := Bool(false)
 
-    when(io.mem.resp.valid) {
+    when(io.mem.resp.fire()) {
         summedReturns := summedReturns + io.mem.resp.bits.data
         currentAddress := currentAddress + 32.U
     }
@@ -107,20 +109,23 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
 //Generates all binary strings based on an input and "saves" it to memory.
 //Strings of length up to 32 work.
-object MemoryAccess {
-    def cycleCombinations(length: UInt, getNext: Bool) {
+object memoryAccess {
+    def cycleCombinations(length: UInt, getNext: Bool, reset: Bool) : UInt =  {
         val initial = Wire(UInt(32.W))
-        initial := (1.U << io.length) - 1.U
+        initial := (1.U << length) - 1.U
         val nextSent = Reg(init = initial)
-        val result = nextCombination.GeneralCombinations(length, nextSent)
-        nextSent := Mux(getNext, result, nextSent)
+        val result = nextCombination.generalCombinations(length, nextSent)
+	when(getNext) {
+	  nextSent := result
+	}
+	nextSent
     }
 }
 
 object nextCombination {
     //Generates a fixed-weight binary string based on a previous string of the same
     //weight and length. Binary strings up to length 32 will work.
-    def fixedWeight(length: UInt, previous: UInt) = {
+    def fixedWeight(length: UInt, previous: UInt) : UInt = {
         //Calculations to generate the next combination
         val trimmed = previous & (previous + 1.U)
         val trailed = trimmed ^ (trimmed - 1.U)
@@ -140,13 +145,13 @@ object nextCombination {
     }
 
     //Generates the lexicographically-next binary string, up to a length of 32
-    def lexicographic(length: UInt, previous: UInt) = {
+    def lexicographic(length: UInt, previous: UInt) : UInt = {
         val result = previous + 1.U
         Mux(((result >>length) & 1.U) === 1.U, Fill(64,1.U), result)
     }
 
     //Generates the next binary string of a certain length based on the cool-er ordering
-    def generalCombinations(length: UInt, previous: UInt) = {
+    def generalCombinations(length: UInt, previous: UInt) : UInt = {
         //Calculations
         //Mask up to the right-most '01' before the end of the string
         val trimmed = previous(31,1) | (previous(31,1) - 1.U) //Remove trailing 0s
@@ -170,7 +175,7 @@ object nextCombination {
     }
 
     //Generates the next binary string within a weight range, based on cool-est ordering
-    def rangedCombinations(length: UInt, previous: UInt, minWeight: UInt, maxWeight: UInt) = {
+    def rangedCombinations(length: UInt, previous: UInt, minWeight: UInt, maxWeight: UInt) : UInt = {
         //Calculations
         val trimmed = previous(31,1) | (previous(31,1) - 1.U)
         val trailed = trimmed ^ (trimmed + 1.U)
