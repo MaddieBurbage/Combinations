@@ -43,17 +43,20 @@ static inline int testAccelerator(int length) {
 
     int placeholder[32];
     int i = 0;
-    for(i; i < 16; i++) {
-	placeholder[i] = 0;
+    for(i; i < 32; i++) {
+	placeholder[i] = 1;
     }
     
-    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder, 5);
+    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder[0], 5);
 
-    return sum; //Mismatches is 0 for success, otherwise it's positive
+    for(i = 0; i < 16; i++) {
+	printf("spot %d reads %x address %x\n", i, placeholder[i], &placeholder[i]);
+    }
+    return sum;
 }
 
 int main(void) {
     int length = 4;
     int testResult = testAccelerator(length);
-    return testResult;
+    return testResult - 16;
 }

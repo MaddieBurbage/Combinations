@@ -22,16 +22,17 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     //Instruction inputs
     val length = Reg(init = io.cmd.bits.rs1(4,0)) //Length of binary string
+    val fastLength = Mux(io.cmd.fire(), io.cmd.bits.rs1(4,0), length)
     val previous = Reg(init = io.cmd.bits.rs2) //Previous binary string
-    val address = previous //Renamed for readability
+    val fastPrevious = Mux(io.cmd.fire(), io.cmd.bits.rs2, previous)
     val currentAddress = Reg(UInt(64.W))
     val rd = Reg(init = io.cmd.bits.inst.rd) //Output location
     val function = Reg(init = io.cmd.bits.inst.funct) //Specific operation
 
     //Submodules for functions: FixedWeight, Lexicographic, General, Ranged, CaptureWeights, Memory (functions 0-5)
     val captureWeights = Module(new CaptureWeights()(p))
-    val outputs = Array(nextCombination.fixedWeight(length, previous), nextCombination.lexicographic(length, previous), nextCombination.generalCombinations(length, previous),
-                        nextCombination.rangedCombinations(length, previous, captureWeights.io.minWeight, captureWeights.io.maxWeight))
+    val outputs = Array(nextCombination.fixedWeight(fastLength, fastPrevious), nextCombination.lexicographic(fastLength, fastPrevious), nextCombination.generalCombinations(fastLength, fastPrevious),
+                        nextCombination.rangedCombinations(fastLength, fastPrevious, captureWeights.io.minWeight, captureWeights.io.maxWeight))
 
     //Set up submodule inputs
     captureWeights.io.newMin := length
@@ -44,7 +45,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     io.resp.valid := state === s_resp
 
     //Accelerator response
-    val summedReturns = Reg(UInt(64.W))
+    val summedReturns = Reg(init = 0.U(64.W))
     val lookups = Array(0.U->outputs(0),1.U->outputs(1), 2.U->outputs(2),
         3.U->outputs(3), 4.U->captureWeights.io.success, 5.U->summedReturns)
     io.resp.bits.data := MuxLookup(function, outputs(0), lookups)
@@ -52,53 +53,60 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     //Accelerator state control
     when(io.cmd.fire()) {
-    	when(function === 5.U) {
-    	    state := s_busy
-            summedReturns := 0.U
-            currentAddress := address
-    	} .otherwise {
-            state := s_resp
-    	}
     	length := (io.cmd.bits.rs1(4,0))
     	previous := io.cmd.bits.rs2
     	rd := io.cmd.bits.inst.rd
     	function := io.cmd.bits.inst.funct
+	when(io.cmd.bits.inst.funct === 5.U) {
+	  state := s_busy
+	  summedReturns := 0.U
+	  currentAddress := io.cmd.bits.rs2
+	} .otherwise {
+	  state := s_resp
+	}
     }
+
+
 
     when(io.resp.fire()) {
         state := s_idle
     }
 
     //Memory access attempt
-    //Stalled if trying to send request but mem not ready
-    val stallStore = tryStore && !io.mem.req.ready    
-    //Generate next general combination
-    val getNext = tryStore && !stallStore
-    val combinationStream = memoryAccess.cycleCombinations(length, getNext, io.cmd.fire())
+    //Generate next general combination and memory values after last is sent
+    val sending = io.mem.req.fire()
+    val getNext = RegNext(sending)
+    val safe = getNext && !sending
+    val combinationStream = memoryAccess.cycleCombinations(fastLength, safe, io.cmd.fire())
+    val lastSent = Reg(UInt(64.W))
 
-    //Controls for memory acces
-    val finished = tryStore && combinationStream === Fill(64,1.U)
-
-
+    //Controls for memory access
+    val doneSending = combinationStream === Fill(64,1.U)
+    val finished = doneSending && io.mem.resp.bits.tag === lastSent(9,0)
+    when(safe) {
+	lastSent := combinationStream
+        currentAddress := currentAddress + 8.U
+	printf("next: %x address %x \n", combinationStream, currentAddress)
+    }
     when(tryStore && finished) {
 	    state := s_resp
     }
 
 
     //Memory request interface
-    io.mem.req.valid := tryStore
-    io.busy := state =/= s_idle
-    io.mem.req.bits.addr := address
+    io.mem.req.valid := tryStore & !doneSending & !getNext
+    io.busy := tryStore
+    io.mem.req.bits.addr := currentAddress
     io.mem.req.bits.tag :=  combinationStream(9,0) //Change for out-of-order
-    io.mem.req.bits.cmd := 0.U //change when actually storing to 1.U?
-    io.mem.req.bits.data := Bits(0) //combinationStream
-    io.mem.req.bits.size := log2Ceil(32).U
+    io.mem.req.bits.cmd := 1.U 
+    io.mem.req.bits.data := combinationStream(31,0) //combinationStream
+    io.mem.req.bits.size := log2Ceil(4).U
     io.mem.req.bits.signed := Bool(false)
     io.mem.req.bits.phys := Bool(false)
 
-    when(io.mem.resp.fire()) {
+    when(io.mem.resp.valid) {
+	printf("addr: %x tag: %x\n", io.mem.resp.bits.addr, io.mem.resp.bits.tag)
         summedReturns := summedReturns + io.mem.resp.bits.data
-        currentAddress := currentAddress + 32.U
     }
 
     //Always false
@@ -111,12 +119,15 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 //Strings of length up to 32 work.
 object memoryAccess {
     def cycleCombinations(length: UInt, getNext: Bool, reset: Bool) : UInt =  {
-        val initial = Wire(UInt(32.W))
+        val initial = Wire(UInt(64.W))
         initial := (1.U << length) - 1.U
-        val nextSent = Reg(init = initial)
-        val result = nextCombination.generalCombinations(length, nextSent)
-	when(getNext) {
+        val nextSent = Reg(init = initial) //The value currently being stored
+        val result = nextCombination.generalCombinations(length, nextSent) //Calculate next value as the last is being stored
+	when(getNext) { //Move to next value
 	  nextSent := result
+	}
+	when(reset) { //Start calculations for a new length of string
+	  nextSent := initial
 	}
 	nextSent
     }
