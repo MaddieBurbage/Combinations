@@ -41,7 +41,7 @@ int nextGeneralCombination(int n, int last, int *out) {
 static inline int testAccelerator(int length) {
     int sum;
 
-    int placeholder[32];
+    long int placeholder[32];
     int i = 0;
     for(i; i < 32; i++) {
 	placeholder[i] = 1;

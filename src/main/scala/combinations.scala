@@ -95,12 +95,12 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     //Memory request interface
     io.mem.req.valid := tryStore & !doneSending & !getNext
-    io.busy := tryStore
+    io.busy := state =/= s_idle
     io.mem.req.bits.addr := currentAddress
     io.mem.req.bits.tag :=  combinationStream(9,0) //Change for out-of-order
     io.mem.req.bits.cmd := 1.U 
-    io.mem.req.bits.data := combinationStream(31,0) //combinationStream
-    io.mem.req.bits.size := log2Ceil(4).U
+    io.mem.req.bits.data := combinationStream //combinationStream
+    io.mem.req.bits.size := log2Ceil(8).U
     io.mem.req.bits.signed := Bool(false)
     io.mem.req.bits.phys := Bool(false)
 
