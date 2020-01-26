@@ -1,5 +1,5 @@
 //Simple Combinational Accelerator, based on the fortyTwo accelerator template.
-// (c) Maddie Burbage, 2020
+// (c) Maddie Burbage, 2020, for the Bailey Research Group at Williams
 package combinations
 
 import Chisel._
@@ -13,101 +13,112 @@ class Combinations(opcodes: OpcodeSet)(implicit p: Parameters) extends LazyRoCC(
     override lazy val module = new CombinationsImp(this)
 }
 
-//Main accelerator class, directs instruction inputs to submodules for computation
+//Main accelerator class, directs instruction inputs to functions for computation
 class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyRoCCModuleImp(outer){
-    //Accelerator States idle, busy (accessing memory), resp (sending response)
+    //Accelerator states: idle, busy (accessing memory), resp (sending response)
     val s_idle :: s_busy :: s_resp :: Nil = Enum(Bits(), 3)
-    val state = Reg(init = s_idle) //state starts idle, is remembered
+    val state = Reg(init = s_idle) //State idle until handling an instruction
     val tryStore = state === s_busy
 
     //Instruction inputs
-    val length = Reg(init = io.cmd.bits.rs1(4,0)) //Length of binary string
-    val fastLength = Mux(io.cmd.fire(), io.cmd.bits.rs1(4,0), length)
+    val length = Reg(init = io.cmd.bits.rs1) //Length of binary string
     val previous = Reg(init = io.cmd.bits.rs2) //Previous binary string
-    val fastPrevious = Mux(io.cmd.fire(), io.cmd.bits.rs2, previous)
-    val currentAddress = Reg(UInt(64.W))
     val rd = Reg(init = io.cmd.bits.inst.rd) //Output location
     val function = Reg(init = io.cmd.bits.inst.funct) //Specific operation
+    val currentAddress = Reg(UInt(64.W)) //The address to use for memory stores
+    //Always-updated versions of the inputs
+    val fastLength = Mux(io.cmd.fire(), io.cmd.bits.rs1, length)
+    val fastPrevious = Mux(io.cmd.fire(), io.cmd.bits.rs2, previous)
 
-    //Submodules for functions: FixedWeight, Lexicographic, General, Ranged, CaptureWeights, Memory (functions 0-5)
-    val captureWeights = Module(new CaptureWeights()(p))
-    val outputs = Array(nextCombination.fixedWeight(fastLength, fastPrevious), nextCombination.lexicographic(fastLength, fastPrevious), nextCombination.generalCombinations(fastLength, fastPrevious),
-                        nextCombination.rangedCombinations(fastLength, fastPrevious, captureWeights.io.minWeight, captureWeights.io.maxWeight))
 
-    //Set up submodule inputs
-    captureWeights.io.newMin := length
-    captureWeights.io.newMax := previous
-    captureWeights.io.reset := Mux(function === 3.U && io.resp.bits.data === ~(0.U(64.W)), 1.U, 0.U)
-    captureWeights.io.set := Mux(function === 4.U, 1.U, 0.U)
+    //Answers for each function: FixedWeight, General, Ranged, then memory versions of each (functions 0-6)
+    val outputs = Array(nextCombination.fixedWeight(fastLength(4,0), fastPrevious), nextCombination.generalCombinations(fastLength(4,0), fastPrevious),
+                        nextCombination.rangedCombinations(fastLength(4,0), fastPrevious, fastLength(9,5), fastLength(14,10)))
 
-    //Command and response setup
+
+    //Command and response states
     io.cmd.ready := state === s_idle
     io.resp.valid := state === s_resp
 
-    //Accelerator response
+    //Accelerator response data
     val summedReturns = Reg(init = 0.U(64.W))
+    //For a 3-bit function code, bit 2 sets whether memory is used or not, and bits 1 and 0 set which combination to use
     val lookups = Array(0.U->outputs(0),1.U->outputs(1), 2.U->outputs(2),
-        3.U->outputs(3), 4.U->captureWeights.io.success, 5.U->summedReturns)
+        4.U->summedReturns, 5.U->summedReturns, 6.U->summedReturns)
     io.resp.bits.data := MuxLookup(function, outputs(0), lookups)
     io.resp.bits.rd := rd
 
-    //Accelerator state control
+
+    //State control
+    //Setup for processing commands
     when(io.cmd.fire()) {
-    	length := (io.cmd.bits.rs1(4,0))
+        //Capture inputs
+    	length := io.cmd.bits.rs1
     	previous := io.cmd.bits.rs2
     	rd := io.cmd.bits.inst.rd
     	function := io.cmd.bits.inst.funct
-	when(io.cmd.bits.inst.funct === 5.U) {
-	  state := s_busy
-	  summedReturns := 0.U
-	  currentAddress := io.cmd.bits.rs2
-	} .otherwise {
-	  state := s_resp
-	}
+
+        //Whether it's a memory-using instruction or not (bit 2 set in the function code)
+    	when(io.cmd.bits.inst.funct(2)===1.U) {
+    	  state := s_busy
+    	  summedReturns := 0.U
+    	  currentAddress := io.cmd.bits.rs2
+    	} .otherwise {
+    	  state := s_resp
+    	}
     }
 
-
-
+    //When done with an instruction
     when(io.resp.fire()) {
         state := s_idle
     }
 
-    //Memory access attempt
-    //Generate next general combination and memory values after last is sent
-    val sending = io.mem.req.fire()
-    val getNext = RegNext(sending)
-    val safe = getNext && !sending
-    val combinationStream = memoryAccess.cycleCombinations(fastLength, safe, io.cmd.fire())
-    val lastSent = Reg(UInt(64.W))
 
-    //Controls for memory access
-    val doneSending = combinationStream === Fill(64,1.U)
-    val finished = doneSending && io.mem.resp.bits.tag === lastSent(9,0)
-    when(safe) {
-	lastSent := combinationStream
+    //Memory-access state
+    val memAccesses = Reg(init = 0.U(4.W)) //Whether all memory requests have been resolved
+
+    //Source of new combination data
+    val nextCombinations = Array(0.U -> memoryAccess.cycleCombinations(fastLength, io.mem.req.fired(), io.cmd.fire(), 0),
+    1.U -> memoryAccess.cycleCombinations(fastLength, io.mem.req.fired(), io.cmd.fire(), 1),
+    2.U -> memoryAccess.cycleCombinations(fastLength, io.mem.req.fired(), io.cmd.fire(), 2))
+    val combinationStream =  MuxLookup(function(1,0), nextCombinations(0), nextCombinations)
+
+    //Request and response controls
+    //When a request is sent, set up next cycle's response data
+    when(io.mem.req.fired()) {
+        memAccesses := memAccesses + 1.U
         currentAddress := currentAddress + 8.U
-	printf("next: %x address %x \n", combinationStream, currentAddress)
+        printf("next: %x address %x \n", combinationStreams, currentAddress)
     }
+
+    //When a response is received, save response data
+    when(io.mem.resp.valid) {
+        summedReturns := summedReturns + io.mem.resp.bits.data
+        memAccesses := memAccesses - 1.U
+        printf("addr: %x tag: %x\n", io.mem.resp.bits.addr, io.mem.resp.bits.tag)
+    }
+
+
+    //Controls for accessing memory
+    val cycleOver = combinationStream === nextCombination.doneSignal
+    val finished = cycleOver && memAccesses === 0.U
+
+    //Switch out of memory mode when finished
     when(tryStore && finished) {
 	    state := s_resp
     }
 
 
     //Memory request interface
-    io.mem.req.valid := tryStore & !doneSending & !getNext
-    io.busy := state =/= s_idle
+    io.mem.req.valid := tryStore && !cycleOver
+    io.busy := tryStore
     io.mem.req.bits.addr := currentAddress
     io.mem.req.bits.tag :=  combinationStream(9,0) //Change for out-of-order
-    io.mem.req.bits.cmd := 1.U 
+    io.mem.req.bits.cmd := 1.U
     io.mem.req.bits.data := combinationStream //combinationStream
     io.mem.req.bits.size := log2Ceil(8).U
     io.mem.req.bits.signed := Bool(false)
     io.mem.req.bits.phys := Bool(false)
-
-    when(io.mem.resp.valid) {
-	printf("addr: %x tag: %x\n", io.mem.resp.bits.addr, io.mem.resp.bits.tag)
-        summedReturns := summedReturns + io.mem.resp.bits.data
-    }
 
     //Always false
     io.interrupt := Bool(false)
@@ -115,55 +126,66 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
 
 
-//Generates all binary strings based on an input and "saves" it to memory.
-//Strings of length up to 32 work.
+//Generates binary string combinations based on input constraints and saves them to memory.
 object memoryAccess {
-    def cycleCombinations(length: UInt, getNext: Bool, reset: Bool) : UInt =  {
-        val initial = Wire(UInt(64.W))
-        initial := (1.U << length) - 1.U
-        val nextSent = Reg(init = initial) //The value currently being stored
-        val result = nextCombination.generalCombinations(length, nextSent) //Calculate next value as the last is being stored
-	when(getNext) { //Move to next value
-	  nextSent := result
-	}
-	when(reset) { //Start calculations for a new length of string
-	  nextSent := initial
-	}
-	nextSent
+    //Depending on the type for cycleCombinations, a different combination pattern will be used.
+    def cycleCombinations(constraints: UInt, getNext: Bool, reset: Bool, type: Int) : UInt = {
+        val initial = Wire(UInt(64.W)) //The first value of the cycle
+        if(type == 1) { //The general cycle starts and ends with all 1s
+            initial := (1.U << constraints(4,0)) - 1.U
+        } else { //The other cycles start with lower 1s filled according to allowed weights
+            initial := (1.U << constraints(9,5)) - 1.U
+        }
+
+        val nextSent = Reg(init = initial) //The value currently saved for storing to memory
+        val result = (type: @switch) match { //Calculate next value as the last is being stored
+            case 0 => nextCombination.fixedWeight(constraints(4,0), nextSent)
+            case 1 => nextCombination.generalCombinations(constraints(4,0), nextSent)
+            case 2 => nextCombination.rangedCombinations(constraints(4,0), nextSent, constraints(9,5), constraints(14,10))
+        }
+
+        //Cycle by one when next value requested
+        when(getNext) {
+    	  nextSent := result
+    	}
+
+        //Start new cycle of the requested length when a reset is requested
+    	when(reset) {
+    	  nextSent := initial
+    	}
+    	nextSent
     }
 }
 
+//These methods generate the next combination for a certain function with the given parameters
 object nextCombination {
+    def doneSignal = UInt("hffffffff") //Signal to return upon a finished cycle (64 bit -1)
+
     //Generates a fixed-weight binary string based on a previous string of the same
     //weight and length. Binary strings up to length 32 will work.
     def fixedWeight(length: UInt, previous: UInt) : UInt = {
-        //Calculations to generate the next combination
-        val trimmed = previous & (previous + 1.U)
-        val trailed = trimmed ^ (trimmed - 1.U)
+        //Calculations to generate the next combination (From Knuth's algorithm for Williams' 'cool' ordering)
+        //Mask up to the right-most '10' of bits
+        val trimmed = previous & (previous + 1.U) //Remove trailing 1s
+        val trailed = trimmed ^ (trimmed - 1.U) //Make a mask for the right-most '10' onwards (if no '10', mask everything)
+        val indexTrailed = trailed & previous //Mask the previous string
 
-        val indexShift = trailed + 1.U
-        val indexTrailed = trailed & previous
+        //Create a duplicate of the mask if the bit before the last '10' is a 1
+        val indexShift = trailed + 1.U //Set the bit to the left of the mask (or nothing set if mask is of everything)
+        val subtracted = (indexShift & previous) - 1.U //If the bit masked by indexShift is 1, subtracted is the mask, if it is 0, subtracted has all bits set
+        val fixed = Mux(subtracted.asSInt < 0.S, 0.U, subtracted) //If no '10', or the bit at indexShift isn't 1, fixed is 0, otherwise it is subtracted
 
-        val subtracted = (indexShift & previous) - 1.U
-        val fixed = Mux(subtracted.asSInt < 0.S, 0.U, subtracted)
-
-        val result = previous + indexTrailed - fixed
-
-        val stopper = 1.U(1.W) << length(4,0)
+        //Rotate masked bits to get the result, return if the cycle isn't over yet
+        val result = previous + indexTrailed - fixed //Rotate the right side of the string starting from indexShift, or the whole string if indexShift not set
+        val stopper = 1.U(1.W) << length(4,0) //Set the bit to the left of the binary string
 
         //Fill result with all 1s if finished
-        Mux(result >> length =/= 0.U, Fill(64,1.U), result % stopper)
-    }
-
-    //Generates the lexicographically-next binary string, up to a length of 32
-    def lexicographic(length: UInt, previous: UInt) : UInt = {
-        val result = previous + 1.U
-        Mux(((result >>length) & 1.U) === 1.U, Fill(64,1.U), result)
+        Mux(result >> length =/= 0.U, doneSignal, result % stopper) //The end of the cycle has been reached if the bit at stopper is set in the new string
     }
 
     //Generates the next binary string of a certain length based on the cool-er ordering
     def generalCombinations(length: UInt, previous: UInt) : UInt = {
-        //Calculations
+        //Calculations to generate the next combination (Algorithm by Maddie to generate Stevens' and Williams' 'cooler' orderings)
         //Mask up to the right-most '01' before the end of the string
         val trimmed = previous(31,1) | (previous(31,1) - 1.U) //Remove trailing 0s
         val trailed = trimmed ^ (trimmed + 1.U) //Make a mask for the right-most 01 onwards
@@ -182,72 +204,40 @@ object nextCombination {
         val rotated = Mux(first === 1.U, shifted | lastPosition, shifted) //Move the first bit to the end of the shifting
         val result = rotated | (~mask & previous) //Combine the rotated and non-rotated parts of the string
 
-        Mux(result === (cap - 1.U), Fill(64,1.U), result) //If finished, the result is all 1s
+        Mux(result === (cap - 1.U), doneSignal, result) //If finished, the result is all 1s
     }
 
     //Generates the next binary string within a weight range, based on cool-est ordering
     def rangedCombinations(length: UInt, previous: UInt, minWeight: UInt, maxWeight: UInt) : UInt = {
-        //Calculations
-        val trimmed = previous(31,1) | (previous(31,1) - 1.U)
-        val trailed = trimmed ^ (trimmed + 1.U)
-        val mask = Wire(UInt(32.W))
+        //Calculations to generate the next combination (Algorithm by Maddie to generate Stevens' and Williams' 'coolest' orderings)
+        //Mask up to the right-most '01' before the end of the string
+        val trimmed = previous(31,1) | (previous(31,1) - 1.U) //Remove trailing 1s
+        val trailed = trimmed ^ (trimmed + 1.U) //Make a mask for the right-most 01 onwards
+        val mask = Wire(UInt(32.W)) //Shift the mask to a 32 bit wire instead of a 31 bit wire
         mask := (trailed << 1.U) + 1.U
 
+        //Find the last spot in the mask, used for rotating the 0th bit
         val lastTemp = Wire(UInt(32.W))
-        lastTemp :=  trailed + 1.U
-        val lastLimit = 1.U << (length(4,0) - 1.U)
-        val lastPosition = Mux(lastTemp > lastLimit || lastTemp === 0.U, lastLimit, lastTemp)
+        lastTemp :=  trailed + 1.U //If there is a valid '01', this is the last bit
+        val lastLimit = 1.U << (length(4,0) - 1.U) //Otherwise use the string's final bit
+        val lastPosition = Mux(lastTemp > lastLimit || lastTemp === 0.U, lastLimit, lastTemp) //Choose which bit position to use
 
         val count = Wire(UInt(32.W))
-	count := PopCount(previous(31,0))
+	    count := PopCount(previous(31,0)) //Count the number of set bits in the string, which should be within the weight constraints
 
-        val cap = 1.U << length(4,0)
-        val first = Mux(mask < cap, 1.U & previous, 1.U & ~previous)
-        val shifted = (previous & mask) >> 1.U
+        val cap = 1.U << length(4,0) //Set a bit one beyond the string's width
+        val flipped = 1.U & ~previous //Take the complement of the 0th bit
+        val valid = Mux(flipped === 0.U, count > minWeight, count < maxWeight) //Check if still a valid weight with that bit changed
+        val first = Mux(mask < cap || !valid, 1.U & previous, flipped) //Flip the first bit if there is no valid 01
+        val shifted = (previous & mask) >> 1.U //Shift the masked region
 
         //Flip the bit while rotating if no 01 and new string is valid
-        val rotated = Mux(first === 1.U && count <= maxWeight && count >= minWeight, shifted | lastPosition, shifted)
+        val rotated = Mux(first === 1.U, shifted | lastPosition, shifted) //Move the first
         val result = rotated | (~mask & previous)
 
-        Mux(result === (cap - 1.U), Fill(64,1.U), result)
+        Mux(result === (cap - 1.U), doneSignal, result)
     }
 }
-
-//Stores the min and max weight used for ranged combinations (function 4). The
-//cycle of ranged combinations must complete before loading new weights
-class CaptureWeights()(implicit p: Parameters) extends Module {
-    val io = IO(new Bundle {
-        val newMin = Input(UInt(5.W))
-        val newMax = Input(UInt(5.W))
-        val reset = Input(UInt(1.W))
-        val set = Input(UInt(1.W))
-        val success = Output(UInt(64.W))
-        val minWeight = Output(UInt(5.W))
-        val maxWeight = Output(UInt(5.W))
-    })
-
-    val lastMinWeight = Reg(UInt(5.W))
-    val lastMaxWeight = Reg(UInt(5.W))
-    val inUse = Reg(UInt(1.W))
-
-    when(inUse === 0.U && io.set === 1.U) {
-        lastMinWeight := io.newMin
-        lastMaxWeight := io.newMax
-        inUse := 1.U
-        io.success := 0.U
-    }
-    .otherwise {
-        io.success := Fill(64, 1.U)
-    }
-
-    when(reset === 1.U) {
-        inUse := 0.U
-    }
-
-    io.minWeight := lastMinWeight
-    io.maxWeight := lastMaxWeight
-}
-
 
 //Setup for the accelerator
 class WithCombinations extends Config((site, here, up) => {
