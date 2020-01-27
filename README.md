@@ -14,6 +14,7 @@ Register 2 contains the previous string for functions 0-2 or the memory store ad
 
 ## Functions
 *Non-memory functions:*
+
 **0:** Fixed-Weight Combinations are binary strings of a certain length that will always contain the same number of 1s and 0s. This method is based on cool-lex ordering as discussed in Stevens' and Williams' "The Coolest Way to Generate Binary Strings" and Knuth's *The Art of Computer Programming* Volume 4, Fascicle 3.
 
 **1:** General Combinations are the collection of all binary strings of a certain length, ordered by the "cooler" successor rule (also from "The Coolest Way to Generate Binary Strings").
@@ -21,6 +22,7 @@ Register 2 contains the previous string for functions 0-2 or the memory store ad
 **2:** Ranged Combinations are all the binary strings of a certain length with the amount of 1s between minimum and maximum weights. Generation is performed by the "coolest" successor rule from "The Coolest Way to Generate Binary Strings".
 
 *Memory functions:*
+
 **4:** Here, fixed weight combinations are stored in memory. The first string has the lowest valid bits set, and the cycle follows the same pattern as function 0 from there.
 
 **5:** This function stores all general combinations in memory, starting from the string with all bits set.
