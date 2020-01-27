@@ -54,7 +54,6 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     when(io.cmd.fire()) {
         //Capture inputs
     	length := io.cmd.bits.rs1
-    	previous := io.cmd.bits.rs2
     	rd := io.cmd.bits.inst.rd
     	function := io.cmd.bits.inst.funct
 
@@ -64,7 +63,8 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     	  summedReturns := 0.U
     	  currentAddress := io.cmd.bits.rs2
     	} .otherwise {
-    	  state := s_resp
+            previous := io.cmd.bits.rs2
+    	    state := s_resp
     	}
     }
 
@@ -95,8 +95,8 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     //When a response is received, save response data
     when(io.mem.resp.valid) {
-        summedReturns := summedReturns + io.mem.resp.bits.data
         memAccesses := memAccesses + accessesChange
+        summedReturns := summedReturns + io.mem.resp.bits.data
         printf("tag: %x addr: %x mem %x\n", io.mem.resp.bits.tag, io.mem.resp.bits.addr, memAccesses)
     }
 
