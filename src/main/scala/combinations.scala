@@ -76,26 +76,28 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 
     //Memory-access state
     val memAccesses = Reg(init = 0.U(4.W)) //Whether all memory requests have been resolved
+    val accessesChange = Wire(UInt(4.W))
+    accessesChange := (io.mem.req.fire() & 1.U(4.W)) - (io.mem.resp.valid & 1.U(4.W))//The latest amount of memory accesses either started or finished
 
     //Source of new combination data
-    val nextCombinations = Array(0.U -> memoryAccess.cycleCombinations(fastLength, io.mem.req.fired(), io.cmd.fire(), 0),
-    1.U -> memoryAccess.cycleCombinations(fastLength, io.mem.req.fired(), io.cmd.fire(), 1),
-    2.U -> memoryAccess.cycleCombinations(fastLength, io.mem.req.fired(), io.cmd.fire(), 2))
-    val combinationStream =  MuxLookup(function(1,0), nextCombinations(0), nextCombinations)
+    val nextCombinations = Array(memoryAccess.cycleCombinations(fastLength, io.mem.req.fire(), io.cmd.fire(), 0), memoryAccess.cycleCombinations(fastLength, io.mem.req.fire(), io.cmd.fire(), 1), memoryAccess.cycleCombinations(fastLength, io.mem.req.fire(), io.cmd.fire(), 2))
+    val memLookups = Array(0.U -> nextCombinations(0), 1.U -> nextCombinations(1), 2.U -> nextCombinations(2))
+    val combinationStream =  Wire(UInt(64.W))
+    combinationStream := MuxLookup(function(1,0), nextCombinations(0), memLookups)
 
     //Request and response controls
     //When a request is sent, set up next cycle's response data
-    when(io.mem.req.fired()) {
-        memAccesses := memAccesses + 1.U
+    when(io.mem.req.fire()) {
+        memAccesses := memAccesses + accessesChange
         currentAddress := currentAddress + 8.U
-        printf("next: %x address %x \n", combinationStreams, currentAddress)
+        printf("next: %x address %x mem: %x\n", combinationStream, currentAddress, memAccesses)
     }
 
     //When a response is received, save response data
     when(io.mem.resp.valid) {
         summedReturns := summedReturns + io.mem.resp.bits.data
-        memAccesses := memAccesses - 1.U
-        printf("addr: %x tag: %x\n", io.mem.resp.bits.addr, io.mem.resp.bits.tag)
+        memAccesses := memAccesses + accessesChange
+        printf("tag: %x addr: %x mem %x\n", io.mem.resp.bits.tag, io.mem.resp.bits.addr, memAccesses)
     }
 
 
@@ -129,16 +131,16 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
 //Generates binary string combinations based on input constraints and saves them to memory.
 object memoryAccess {
     //Depending on the type for cycleCombinations, a different combination pattern will be used.
-    def cycleCombinations(constraints: UInt, getNext: Bool, reset: Bool, type: Int) : UInt = {
+    def cycleCombinations(constraints: UInt, getNext: Bool, reset: Bool, kind: Int) : UInt = {
         val initial = Wire(UInt(64.W)) //The first value of the cycle
-        if(type == 1) { //The general cycle starts and ends with all 1s
+        if(kind == 1) { //The general cycle starts and ends with all 1s
             initial := (1.U << constraints(4,0)) - 1.U
         } else { //The other cycles start with lower 1s filled according to allowed weights
             initial := (1.U << constraints(9,5)) - 1.U
         }
 
-        val nextSent = Reg(init = initial) //The value currently saved for storing to memory
-        val result = (type: @switch) match { //Calculate next value as the last is being stored
+        val nextSent = Reg(UInt(64.W)) //The value currently saved for storing to memory
+        val result = kind match { //Calculate next value as the last is being stored
             case 0 => nextCombination.fixedWeight(constraints(4,0), nextSent)
             case 1 => nextCombination.generalCombinations(constraints(4,0), nextSent)
             case 2 => nextCombination.rangedCombinations(constraints(4,0), nextSent, constraints(9,5), constraints(14,10))
@@ -232,10 +234,10 @@ object nextCombination {
         val shifted = (previous & mask) >> 1.U //Shift the masked region
 
         //Flip the bit while rotating if no 01 and new string is valid
-        val rotated = Mux(first === 1.U, shifted | lastPosition, shifted) //Move the first
-        val result = rotated | (~mask & previous)
+        val rotated = Mux(first === 1.U, shifted | lastPosition, shifted) //Move the first bit
+        val result = rotated | (~mask & previous) //Add the first bit to the final result
 
-        Mux(result === (cap - 1.U), doneSignal, result)
+        Mux(result === (1.U << minWeight) - 1.U, doneSignal, result) //Return -1 if finished
     }
 }
 

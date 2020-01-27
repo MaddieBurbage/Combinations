@@ -41,22 +41,23 @@ int nextGeneralCombination(int n, int last, int *out) {
 static inline int testAccelerator(int length) {
     int sum;
 
-    long int placeholder[32];
+    long int placeholder[64];
     int i = 0;
-    for(i; i < 32; i++) {
+    for(i; i < 64; i++) {
 	placeholder[i] = 1;
     }
     
-    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder[0], 5);
+    length = length | (3 << 5) | (4 << 10);
+    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder[0], 6);
 
-    for(i = 0; i < 16; i++) {
+    for(i = 0; i < 64; i++) {
 	printf("spot %d reads %x address %x\n", i, placeholder[i], &placeholder[i]);
     }
     return sum;
 }
 
 int main(void) {
-    int length = 4;
+    int length = 6;
     int testResult = testAccelerator(length);
-    return testResult - 16;
+    return testResult;
 }
