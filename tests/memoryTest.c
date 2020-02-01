@@ -41,13 +41,13 @@ int nextGeneralCombination(int n, int last, int *out) {
 static inline int testAccelerator(int length) {
     int sum;
 
-    long int placeholder[64];
+    long int placeholder[64]; //long 64
     int i = 0;
     for(i; i < 64; i++) {
-	placeholder[i] = 1;
+	placeholder[i] = i;
     }
     
-    length = length | (3 << 5) | (4 << 10);
+    length = length | (0 << 5) | (6 << 10);
     ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder[0], 6);
 
     for(i = 0; i < 64; i++) {

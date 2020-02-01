@@ -1,4 +1,4 @@
-// Tests for the fixed weight combinations accelerator
+//Benchmark tests for all combination sequence types
 // (c) Maddie Burbage, 2020
 
 #include "rocc.h"
@@ -67,20 +67,32 @@ static inline int timeHardware(int inputString, int length, int function) {
     int outputString, outputs;
 
     outputs = 0;
-
-    ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 0);
+    #if FUNCT < 3
+    ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, function);
     while(outputString != -1) {
 	inputString = outputString;
 	outputs++;
-        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 0);
+        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, function);
     }
+    #elif
+    long int safe[TOTAL];
+    ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], function);
+    #endif
     return outputs;
 }
 
 static inline int timeSoftware(int inputString, int length) {
     int outputString, outputs;
     outputs = 0;
-    while(nextWeightedCombination(length, inputString, &outputString) != -1) {
+    while(
+	  #if FUNCT % 3 == 0
+	  nextWeightedCombination(length, inputString, &outputString)
+	  #elif FUNCT % 3 == 1
+	  nextGeneralCombination(length, inputString, &outputString)
+	  #else
+	  nextRangedCombination(length, inputString, 0, WIDTH/2, &outputString)
+	  #endif
+	  != -1) {
 	inputString = outputString;
 	outputs++;
     }
@@ -88,11 +100,26 @@ static inline int timeSoftware(int inputString, int length) {
 }
 
 int main(void) {
-    int inputString = 0b00001111;
-    int length = 8;
+    #if FUNCT % 3 == 1
+    int inputString = (1 << WIDTH) - 1;
+    int answer = 1 << WIDTH;
+    #else
+    int inputString = (1 << WIDTH/2) - 1;
+    #if FUNCT % 3 == 0
+    int lookups[] = {2, 6, 70, 12870};
+    int answer = lookups[log2(WIDTH)-1];
+    #else
+    int lookups[] = {3, 11, 163, 39203};
+    int answer = lookups[log2(WIDTH)-1];
+    #endif
+    #endif
+    
+    int length = WIDTH;
     int answer = 69; //general it's 2^length - 1, fixed it's length!/weight!/weight-1!
-
-    int testResult = timeHardware(inputString, length, 0);
-    //int testResult = timeSoftware(inputString, length);
+    #if WARE == 1
+    int testResult = timeHardware(inputString, length, FUNCT);
+    #else
+    int testResult = timeSoftware(inputString, length);
+    #endif
     return testResult - answer;
 }
