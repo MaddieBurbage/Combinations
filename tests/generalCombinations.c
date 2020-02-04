@@ -18,7 +18,7 @@ int nextGeneralCombination(int n, int last, int *out) {
     trimmed = cut | (cut - 1); //Discards trailing zeros
     trailed = trimmed ^ (trimmed + 1); //Marks the start of the last "01"
     mask = (trailed << 1) + 1;
-    
+
     lastTemp = trailed + 1; //Indexes the start of the last "01"
     lastLimit = 1 << (n-1); //Indexes the length of the string
     lastPosition = (lastTemp == 0 || lastTemp > lastLimit)? lastLimit : lastTemp;
@@ -38,14 +38,14 @@ int nextGeneralCombination(int n, int last, int *out) {
 }
 
 
-static inline int testAccelerator(int inputString, int length) {
+static inline int testAccelerator(int length, int inputString) {
     int outputString, answer, mismatches;
 
     mismatches = 0;
 
     //For each string in the sequence, compare the c output to the accelerator's
     while(nextGeneralCombination(length, inputString, &answer) != -1) {
-        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 2);
+        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 1);
 	if(outputString == answer) {
 	  printf("Next string: %d, accelerator found %d\n", answer, outputString);
 	} else {
@@ -62,6 +62,6 @@ int main(void) {
     int length = 4;
 
 
-    int testResult = testAccelerator(inputString, length);
+    int testResult = testAccelerator(length, inputString);
     return testResult;
 }

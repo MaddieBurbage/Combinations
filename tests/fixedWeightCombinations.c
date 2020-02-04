@@ -34,14 +34,16 @@ int nextWeightedCombination(int n, int last, int *out) {
 }
 
 
-static inline int testAccelerator(int inputString, int length) {
-    int outputString, answer, mismatches;
-    
+static inline int testAccelerator(int length, int inputString, int weight) {
+    int outputString, answer, mismatches, constraints;
+
     mismatches = 0;
+
+    constraints = length | (weight << 5);
 
     //For each string in the sequence, compare the c output to the accelerator's
     while(nextWeightedCombination(length, inputString, &answer) != -1) {
-        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, 0);
+        ROCC_INSTRUCTION_DSS(0, outputString, constraints, inputString, 0);
 	if(outputString == answer) {
 	  printf("Next string: %d, accelerator found %d\n", answer, outputString);
 	} else {
@@ -56,8 +58,9 @@ static inline int testAccelerator(int inputString, int length) {
 int main(void) {
     int inputString = 0b000111;
     int length = 6;
+    int weight = 3;
 
-  
-    int testResult = testAccelerator(inputString, length);
+
+    int testResult = testAccelerator(length, inputString, weight);
     return testResult;
 }
