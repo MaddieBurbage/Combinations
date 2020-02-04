@@ -115,6 +115,13 @@ static inline int timeHardware(int inputString, int length, int answer) {
         ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     }
     #else
+    
+    #if FUNCT % 3 == 0
+    length |= (WIDTH/2) << 5;
+    #elif FUNCT % 3 == 2
+    length |= (0 << 5) |  ((WIDTH/2) << 9);
+    #endif
+    
     long int safe[answer];
     ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], FUNCT);
     #endif
@@ -139,7 +146,7 @@ static inline int timeSoftware(int inputString, int length, int answer) {
 	outputs++;
     }
     #else
-    long int safe[answer];
+    int safe[answer];
     int i = 0;
     while(
 	  #if FUNCT % 3 == 0
@@ -153,6 +160,7 @@ static inline int timeSoftware(int inputString, int length, int answer) {
 	inputString = safe[i];
 	printf("%d \n", outputString);
 	i++;
+    }
     #endif
     return outputs;
 }
@@ -171,20 +179,20 @@ int main(void) {
     int lookups[] = {0,0, 3, 0, 11, 0,0,0, 163, 0,0,0,0,0,0,0, 39203};
     int answer = lookups[WIDTH];
     #endif
-
+    printf("answer %d, input %d \n", answer, inputString);
     //Set the string's length
     int length = WIDTH;
     //Test hardware or software
     //rdcycle() - rdcycle()
+
     #if WARE == 1
     int testResult = timeHardware(inputString, length, answer);
     #else
-    int testResult = timeSoftware(inputString, length);
+    int testResult = timeSoftware(inputString, length, answer);
     #endif
 
     #if FUNCT < 3
-    return testResult - answer;
-    #else
-    return testResult;
+    testResult -= answer;
     #endif
+    return testResult;
 }
