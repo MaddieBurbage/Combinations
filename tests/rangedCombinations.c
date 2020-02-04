@@ -30,8 +30,8 @@ int nextRangedCombination(int n, int last, int min, int max, int *out) {
 
     cap = 1 << n;
     flipped = 1 & ~last;
-    valid = (flipped == 0)? count > minWeight : count < maxWeight;
-    first = (mask < cap || !valid)? 1.U & last : flipped; //The bit to be moved
+    valid = (flipped == 0)? count > min : count < max;
+    first = (mask < cap || !valid)? 1 & last : flipped; //The bit to be moved
     shifted = cut & trailed;
     rotated = (first == 1)? shifted | lastPosition : shifted;
     result = rotated | (~mask & last);
@@ -54,7 +54,7 @@ static inline int testAccelerator(int length, int inputString, int min, int max)
     constraints = length | (min << 5) | (max << 10);
 
     //For each string in the sequence, compare the c output to the accelerator's
-    while(nextGeneralCombination(length, inputString, min, max, &answer) != -1) {
+    while(nextRangedCombination(length, inputString, min, max, &answer) != -1) {
         ROCC_INSTRUCTION_DSS(0, outputString, constraints, inputString, 2);
 	if(outputString == answer) {
 	  printf("Next string: %d, accelerator found %d\n", answer, outputString);

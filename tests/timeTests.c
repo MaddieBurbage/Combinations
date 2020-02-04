@@ -88,8 +88,8 @@ int nextRangedCombination(int n, int last, int min, int max, int *out) {
 
     cap = 1 << n;
     flipped = 1 & ~last;
-    valid = (flipped == 0)? count > minWeight : count < maxWeight;
-    first = (mask < cap || !valid)? 1.U & last : flipped; //The bit to be moved
+    valid = (flipped == 0)? count > min : count < max;
+    first = (mask < cap || !valid)? 1 & last : flipped; //The bit to be moved
     shifted = cut & trailed;
     rotated = (first == 1)? shifted | lastPosition : shifted;
     result = rotated | (~mask & last);
