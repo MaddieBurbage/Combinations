@@ -68,7 +68,7 @@ static inline int testAccelerator(int length, int inputString, int min, int max)
 }
 
 int main(void) {
-    int inputString = 0b1111;
+    int inputString = 0b1;
     int length = 4;
     int min = 1;
     int max = 3;

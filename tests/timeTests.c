@@ -71,16 +71,15 @@ int nextGeneralCombination(int n, int last, int *out) {
  */
 int nextRangedCombination(int n, int last, int min, int max, int *out) {
   unsigned int cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, disposable, count, cap, flipped, valid, first, shifted, rotated, result;
-
     cut = last >> 1;
     trimmed = cut | (cut - 1); //Discards trailing zeros
     trailed = trimmed ^ (trimmed + 1); //Marks the start of the last "01"
     mask = (trailed << 1) + 1;
-
+    
     lastTemp = trailed + 1; //Indexes the start of the last "01"
     lastLimit = 1 << (n-1); //Indexes the length of the string
     lastPosition = (lastTemp == 0 || lastTemp > lastLimit)? lastLimit : lastTemp;
-
+    
     disposable = last; //Prepare to count bits set in the string
     for(count = 0; disposable; count++) {
         disposable = disposable & (disposable - 1); //Discard the last bit set
@@ -103,27 +102,29 @@ int nextRangedCombination(int n, int last, int min, int max, int *out) {
     return 1;
 }
 
-static inline int timeHardware(int inputString, int length, int function, int answer) {
+static inline int timeHardware(int inputString, int length, int answer) {
     int outputString, outputs;
 
-    outputs = 0;
+    outputs = 1;
     #if FUNCT < 3
-    ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, function);
+    ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     while(outputString != -1) {
+	printf("%d \n", outputString);
 	inputString = outputString;
 	outputs++;
-        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, function);
+        ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     }
     #else
     long int safe[answer];
-    ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], function);
+    ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], FUNCT);
     #endif
     return outputs;
 }
 
-static inline int timeSoftware(int inputString, int length) {
+static inline int timeSoftware(int inputString, int length, int answer) {
     int outputString, outputs;
-    outputs = 0;
+    outputs = 1;
+    #if FUNCT < 3
     while(
 	  #if FUNCT % 3 == 0
 	  nextWeightedCombination(length, inputString, &outputString)
@@ -131,38 +132,59 @@ static inline int timeSoftware(int inputString, int length) {
 	  nextGeneralCombination(length, inputString, &outputString)
 	  #else
 	  nextRangedCombination(length, inputString, 0, WIDTH/2, &outputString)
-	  #endif
+          #endif
 	  != -1) {
 	inputString = outputString;
+	printf("%d \n", outputString);
 	outputs++;
     }
+    #else
+    long int safe[answer];
+    int i = 0;
+    while(
+	  #if FUNCT % 3 == 0
+	  nextWeightedCombination(length, inputString, &safe[i])
+	  #elif FUNCT % 3 == 1
+	  nextGeneralCombination(length, inputString, &safe[i])
+	  #else
+	  nextRangedCombination(length, inputString, 0, WIDTH/2, &safe[i])
+          #endif
+	  != -1) {
+	inputString = safe[i];
+	printf("%d \n", outputString);
+	i++;
+    #endif
     return outputs;
 }
 
 int main(void) {
     //Set input string and the expected number of combinations
-    #if FUNCT % 3 == 1
+    #if FUNCT % 3 == 1 //General combinations
     int inputString = (1 << WIDTH) - 1;
     int answer = 1 << WIDTH;
-    #else
+    #elif FUNCT % 3 == 0 //Fixed weight combinations
     int inputString = (1 << WIDTH/2) - 1;
-    #if FUNCT % 3 == 0
     int lookups[] = {0,0, 2, 0, 6, 0,0,0, 70, 0,0,0,0,0,0,0, 12870};
     int answer = lookups[WIDTH];
-    #else
+    #else //Ranged weight combinations
+    int inputString = 0;
     int lookups[] = {0,0, 3, 0, 11, 0,0,0, 163, 0,0,0,0,0,0,0, 39203};
     int answer = lookups[WIDTH];
-    #endif
     #endif
 
     //Set the string's length
     int length = WIDTH;
-
     //Test hardware or software
+    //rdcycle() - rdcycle()
     #if WARE == 1
-    int testResult = timeHardware(inputString, length, FUNCT, answer);
+    int testResult = timeHardware(inputString, length, answer);
     #else
     int testResult = timeSoftware(inputString, length);
     #endif
+
+    #if FUNCT < 3
     return testResult - answer;
+    #else
+    return testResult;
+    #endif
 }

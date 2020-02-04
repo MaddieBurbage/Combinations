@@ -1,11 +1,11 @@
-#!
-WIDTH=2
-FUNCT=0
-WARE=0
+#!/bin/bash
 
+export FUNCT=0
 while [ $FUNCT -lt 3 ]; do
+    export WIDTH=2
     while [ $WIDTH -lt 5 ]; do
-        while [ $WARE -lt 2 ]; do
+	export WARE=0
+	while [ $WARE -lt 2 ]; do
             make timeTests.riscv
             mv timeTests.riscv timeTests-$FUNCT-$WARE-$WIDTH.riscv
             let WARE=$WARE+1
@@ -15,13 +15,12 @@ while [ $FUNCT -lt 3 ]; do
     let FUNCT=$FUNCT+1
 done
 
-
-WIDTH=2
 FUNCT=4
-WARE=0
 while [ $FUNCT -lt 7 ]; do
+    WIDTH=2
     while [ $WIDTH -lt 5 ]; do
-        while [ $WARE -lt 2 ]; do
+	WARE=0
+	while [ $WARE -lt 2 ]; do
             make timeTests.riscv
             mv timeTests.riscv timeTests-$FUNCT-$WARE-$WIDTH.riscv
             let WARE=$WARE+1
@@ -30,3 +29,5 @@ while [ $FUNCT -lt 7 ]; do
     done
     let FUNCT=$FUNCT+1
 done
+
+echo Made tests for functions up to $FUNCT-1 and widths up to $WIDTH/2
