@@ -75,11 +75,11 @@ int nextRangedCombination(int n, int last, int min, int max, int *out) {
     trimmed = cut | (cut - 1); //Discards trailing zeros
     trailed = trimmed ^ (trimmed + 1); //Marks the start of the last "01"
     mask = (trailed << 1) + 1;
-    
+
     lastTemp = trailed + 1; //Indexes the start of the last "01"
     lastLimit = 1 << (n-1); //Indexes the length of the string
     lastPosition = (lastTemp == 0 || lastTemp > lastLimit)? lastLimit : lastTemp;
-    
+
     disposable = last; //Prepare to count bits set in the string
     for(count = 0; disposable; count++) {
         disposable = disposable & (disposable - 1); //Discard the last bit set
@@ -115,13 +115,13 @@ static inline int timeHardware(int inputString, int length, int answer) {
         ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     }
     #else
-    
+
     #if FUNCT % 3 == 0
     length |= (WIDTH/2) << 5;
     #elif FUNCT % 3 == 2
-    length |= (0 << 5) |  ((WIDTH/2) << 9);
+    length |= (0 << 5) |  ((WIDTH/2) << 10);
     #endif
-    
+
     long int safe[answer];
     ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], FUNCT);
     #endif

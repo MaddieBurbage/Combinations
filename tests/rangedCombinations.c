@@ -13,7 +13,6 @@
  */
 int nextRangedCombination(int n, int last, int min, int max, int *out) {
   unsigned int cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, disposable, count, cap, flipped, valid, first, shifted, rotated, result;
-
     cut = last >> 1;
     trimmed = cut | (cut - 1); //Discards trailing zeros
     trailed = trimmed ^ (trimmed + 1); //Marks the start of the last "01"
@@ -56,13 +55,13 @@ static inline int testAccelerator(int length, int inputString, int min, int max)
     //For each string in the sequence, compare the c output to the accelerator's
     while(nextRangedCombination(length, inputString, min, max, &answer) != -1) {
         ROCC_INSTRUCTION_DSS(0, outputString, constraints, inputString, 2);
-	if(outputString == answer) {
-	  printf("Next string: %d, accelerator found %d\n", answer, outputString);
-	} else {
-	  printf("ERROR: next string: %d, accelerator found %d\n", answer, outputString);
-	  mismatches++;
-	}
-	inputString = answer;
+    	if(outputString == answer) {
+    	  printf("Next string: %d, accelerator found %d\n", answer, outputString);
+    	} else {
+    	  printf("ERROR: next string: %d, accelerator found %d\n", answer, outputString);
+    	  mismatches++;
+    	}
+    	inputString = answer;
     }
     return mismatches; //Mismatches is 0 for success, otherwise it's positive
 }
