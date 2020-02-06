@@ -48,7 +48,7 @@ static inline int testAccelerator(int length) {
     }
     
     length = length | (0 << 5) | (6 << 10);
-    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder[0], 6);
+    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder[0], 5);
 
     for(i = 0; i < 64; i++) {
 	printf("spot %d reads %x address %x\n", i, placeholder[i], &placeholder[i]);
@@ -57,7 +57,7 @@ static inline int testAccelerator(int length) {
 }
 
 int main(void) {
-    int length = 6;
+    int length = 4;
     int testResult = testAccelerator(length);
     return testResult;
 }

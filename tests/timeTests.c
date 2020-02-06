@@ -106,6 +106,14 @@ static inline int timeHardware(int inputString, int length, int answer) {
     int outputString, outputs;
 
     outputs = 1;
+
+    #if FUNCT % 4 == 0
+    length |= (WIDTH/2) << 5;
+    #elif FUNCT % 4 == 2
+    length |= (0 << 5) |  ((WIDTH/2) << 10);
+    #endif
+    printf("length %d \n", length);
+
     #if FUNCT < 3
     ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     while(outputString != -1) {
@@ -115,15 +123,16 @@ static inline int timeHardware(int inputString, int length, int answer) {
         ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     }
     #else
-
-    #if FUNCT % 3 == 0
-    length |= (WIDTH/2) << 5;
-    #elif FUNCT % 3 == 2
-    length |= (0 << 5) |  ((WIDTH/2) << 10);
-    #endif
-
     long int safe[answer];
+    int i;
+    for(i = 0; i < answer; i++) {
+	safe[i] = i;
+    }
     ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], FUNCT);
+    outputs = outputString;
+    for(i=0; i<answer; i++) {
+	printf("%x \n", safe[i]);
+    }
     #endif
     return outputs;
 }
@@ -133,9 +142,9 @@ static inline int timeSoftware(int inputString, int length, int answer) {
     outputs = 1;
     #if FUNCT < 3
     while(
-	  #if FUNCT % 3 == 0
+	  #if FUNCT % 4 == 0
 	  nextWeightedCombination(length, inputString, &outputString)
-	  #elif FUNCT % 3 == 1
+	  #elif FUNCT % 4 == 1
 	  nextGeneralCombination(length, inputString, &outputString)
 	  #else
 	  nextRangedCombination(length, inputString, 0, WIDTH/2, &outputString)
@@ -149,28 +158,28 @@ static inline int timeSoftware(int inputString, int length, int answer) {
     int safe[answer];
     int i = 0;
     while(
-	  #if FUNCT % 3 == 0
+	  #if FUNCT % 4 == 0
 	  nextWeightedCombination(length, inputString, &safe[i])
-	  #elif FUNCT % 3 == 1
+	  #elif FUNCT % 4 == 1
 	  nextGeneralCombination(length, inputString, &safe[i])
 	  #else
 	  nextRangedCombination(length, inputString, 0, WIDTH/2, &safe[i])
           #endif
 	  != -1) {
 	inputString = safe[i];
-	printf("%d \n", outputString);
 	i++;
     }
+    outputs = 0;
     #endif
     return outputs;
 }
 
 int main(void) {
     //Set input string and the expected number of combinations
-    #if FUNCT % 3 == 1 //General combinations
+    #if FUNCT % 4 == 1 //General combinations
     int inputString = (1 << WIDTH) - 1;
     int answer = 1 << WIDTH;
-    #elif FUNCT % 3 == 0 //Fixed weight combinations
+    #elif FUNCT % 4 == 0 //Fixed weight combinations
     int inputString = (1 << WIDTH/2) - 1;
     int lookups[] = {0,0, 2, 0, 6, 0,0,0, 70, 0,0,0,0,0,0,0, 12870};
     int answer = lookups[WIDTH];
