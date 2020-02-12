@@ -2,6 +2,7 @@
 // (c) Maddie Burbage, 2020
 
 #include "rocc.h"
+#include "encoding.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -112,12 +113,11 @@ static inline int timeHardware(int inputString, int length, int answer) {
     #elif FUNCT % 4 == 2
     length |= (0 << 5) |  ((WIDTH/2) << 10);
     #endif
-    printf("length %d \n", length);
 
     #if FUNCT < 3
     ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     while(outputString != -1) {
-	printf("%d \n", outputString);
+	//printf("%d \n", outputString);
 	inputString = outputString;
 	outputs++;
         ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
@@ -131,7 +131,7 @@ static inline int timeHardware(int inputString, int length, int answer) {
     ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], FUNCT);
     outputs = outputString;
     for(i=0; i<answer; i++) {
-	printf("%x \n", safe[i]);
+	//printf("%x \n", safe[i]);
     }
     #endif
     return outputs;
@@ -151,7 +151,7 @@ static inline int timeSoftware(int inputString, int length, int answer) {
           #endif
 	  != -1) {
 	inputString = outputString;
-	printf("%d \n", outputString);
+	//printf("%d \n", outputString);
 	outputs++;
     }
     #else
@@ -167,38 +167,43 @@ static inline int timeSoftware(int inputString, int length, int answer) {
           #endif
 	  != -1) {
 	inputString = safe[i];
+	//printf("%d \n", inputString);
 	i++;
     }
-    outputs = 0;
+    outputs = (i+1 == answer)? 0 : -1;
     #endif
     return outputs;
 }
 
 int main(void) {
+    unsigned long startCycle, endCycle;
     //Set input string and the expected number of combinations
     #if FUNCT % 4 == 1 //General combinations
     int inputString = (1 << WIDTH) - 1;
     int answer = 1 << WIDTH;
     #elif FUNCT % 4 == 0 //Fixed weight combinations
     int inputString = (1 << WIDTH/2) - 1;
-    int lookups[] = {0,0, 2, 0, 6, 0,0,0, 70, 0,0,0,0,0,0,0, 12870};
+    int lookups[] = {0,0, 2, 0, 6, 0, 20, 0, 70, 0,0,0,0,0,0,0, 12870};
     int answer = lookups[WIDTH];
     #else //Ranged weight combinations
     int inputString = 0;
-    int lookups[] = {0,0, 3, 0, 11, 0,0,0, 163, 0,0,0,0,0,0,0, 39203};
+    int lookups[] = {0,0, 3, 0, 11, 0, 42, 0, 163, 0,0,0,0,0,0,0, 39203};
     int answer = lookups[WIDTH];
     #endif
-    printf("answer %d, input %d \n", answer, inputString);
+    //printf("answer %d, input %d \n", answer, inputString);
     //Set the string's length
     int length = WIDTH;
-    //Test hardware or software
-    //rdcycle() - rdcycle()
 
+    asm volatile ("fence");
+    startCycle = rdcycle();
     #if WARE == 1
     int testResult = timeHardware(inputString, length, answer);
     #else
     int testResult = timeSoftware(inputString, length, answer);
     #endif
+    asm volatile ("fence");
+    endCycle = rdcycle();
+    printf("(%d,%d) \n", WIDTH, endCycle-startCycle);
 
     #if FUNCT < 3
     testResult -= answer;

@@ -84,20 +84,19 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     val memLookups = Array(0.U -> nextCombinations(0), 1.U -> nextCombinations(1), 2.U -> nextCombinations(2))
     val combinationStream =  Wire(UInt(64.W))
     combinationStream := MuxLookup(function(1,0), nextCombinations(0), memLookups)
-
     //Request and response controls
     //When a request is sent, set up next cycle's response data
     when(io.mem.req.fire()) {
         memAccesses := memAccesses + accessesChange
         currentAddress := currentAddress + 8.U
-        printf("next: %x address %x mem: %x\n", combinationStream, currentAddress, memAccesses)
+	//printf("combo: %x addr: %x mem %x\n", combinationStream, currentAddress, memAccesses)
     }
 
     //When a response is received, save response data
     when(io.mem.resp.valid) {
         memAccesses := memAccesses + accessesChange
         summedReturns := summedReturns + io.mem.resp.bits.data
-        printf("tag: %x addr: %x mem %x\n", io.mem.resp.bits.tag, io.mem.resp.bits.addr, memAccesses)
+        //printf("tag: %x addr: %x mem %x\n", io.mem.resp.bits.tag, io.mem.resp.bits.addr, memAccesses)
     }
 
 
