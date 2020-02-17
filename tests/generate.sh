@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MAX=17
+MAX=33
 export FUNCT=0
 while [ $FUNCT -lt 3 ]; do
     export WIDTH=2
@@ -16,7 +16,6 @@ while [ $FUNCT -lt 3 ]; do
     let FUNCT=$FUNCT+1
 done
 
-MAX=7
 FUNCT=4
 while [ $FUNCT -lt 7 ]; do
     WIDTH=2
@@ -27,7 +26,7 @@ while [ $FUNCT -lt 7 ]; do
             mv timeTests.riscv timeTests-$FUNCT-$WARE-$WIDTH.riscv
             let WARE=$WARE+1
         done
-        let WIDTH=$WIDTH+2
+        let WIDTH=$WIDTH*2
     done
     let FUNCT=$FUNCT+1
 done

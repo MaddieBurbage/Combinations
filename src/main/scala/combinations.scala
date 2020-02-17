@@ -89,14 +89,14 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     when(io.mem.req.fire()) {
         memAccesses := memAccesses + accessesChange
         currentAddress := currentAddress + 8.U
-	//printf("combo: %x addr: %x mem %x\n", combinationStream, currentAddress, memAccesses)
+	printf("combo: %x addr: %x mem %x\n", combinationStream, currentAddress, memAccesses)
     }
 
     //When a response is received, save response data
     when(io.mem.resp.valid) {
         memAccesses := memAccesses + accessesChange
         summedReturns := summedReturns + io.mem.resp.bits.data
-        //printf("tag: %x addr: %x mem %x\n", io.mem.resp.bits.tag, io.mem.resp.bits.addr, memAccesses)
+        printf("tag: %x addr: %x mem %x\n", io.mem.resp.bits.tag, io.mem.resp.bits.addr, memAccesses)
     }
 
 
@@ -114,7 +114,7 @@ class CombinationsImp(outer: Combinations)(implicit p: Parameters) extends LazyR
     io.mem.req.valid := tryStore && !cycleOver
     io.busy := tryStore
     io.mem.req.bits.addr := currentAddress
-    io.mem.req.bits.tag :=  combinationStream(9,0) //Change for out-of-order
+    io.mem.req.bits.tag :=  combinationStream(5,0) //Change for out-of-order
     io.mem.req.bits.cmd := 1.U
     io.mem.req.bits.data := combinationStream //combinationStream
     io.mem.req.bits.size := log2Ceil(8).U

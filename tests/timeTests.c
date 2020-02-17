@@ -15,7 +15,7 @@
  * The Art of Computer Programming, volume 4, fascicle 3.
  */
 int nextWeightedCombination(int n, int last, int *out) {
-    int next, temp;
+    int next, temp, result;
     next = last & (last + 1); //Discards trailing ones
 
     temp = next ^ (next - 1); //Marks the start of the last "10"
@@ -26,13 +26,13 @@ int nextWeightedCombination(int n, int last, int *out) {
     next = (next & last) - 1;
     next = (next > 0)? next : 0;
 
-    next = last + temp - next;
+    result = last + temp - next;
 
-    if(next / (1 << n) > 0) {
+    if(result / (1 << n) > 0) {
         return -1;
     }
 
-    *out = next % (1 << n);
+    *out = result % (1 << n);
     return 1;
 }
 
@@ -113,7 +113,6 @@ static inline int timeHardware(int inputString, int length, int answer) {
     #elif FUNCT % 4 == 2
     length |= (0 << 5) |  ((WIDTH/2) << 10);
     #endif
-
     #if FUNCT < 3
     ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     while(outputString != -1) {
@@ -130,9 +129,6 @@ static inline int timeHardware(int inputString, int length, int answer) {
     }
     ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], FUNCT);
     outputs = outputString;
-    for(i=0; i<answer; i++) {
-	//printf("%x \n", safe[i]);
-    }
     #endif
     return outputs;
 }
@@ -183,14 +179,14 @@ int main(void) {
     int answer = 1 << WIDTH;
     #elif FUNCT % 4 == 0 //Fixed weight combinations
     int inputString = (1 << WIDTH/2) - 1;
-    int lookups[] = {0,0, 2, 0, 6, 0, 20, 0, 70, 0,0,0,0,0,0,0, 12870};
+    int lookups[] = {0,0, 2, 0, 6, 0, 20, 0, 70, 0,0,0,0,0,0,0, 12870,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,601080390};
     int answer = lookups[WIDTH];
     #else //Ranged weight combinations
     int inputString = 0;
-    int lookups[] = {0,0, 3, 0, 11, 0, 42, 0, 163, 0,0,0,0,0,0,0, 39203};
+    int lookups[] = {0,0, 3, 0, 11, 0, 42, 0, 163, 0,0,0,0,0,0,0, 39203,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};//2448023843};
     int answer = lookups[WIDTH];
     #endif
-    //printf("answer %d, input %d \n", answer, inputString);
+    //printf("answer %l, input %d \n", answer, inputString);
     //Set the string's length
     int length = WIDTH;
 
@@ -203,7 +199,7 @@ int main(void) {
     #endif
     asm volatile ("fence");
     endCycle = rdcycle();
-    printf("(%d,%d) \n", WIDTH, endCycle-startCycle);
+    printf("%d, %lu \n", WIDTH, endCycle-startCycle);
 
     #if FUNCT < 3
     testResult -= answer;
