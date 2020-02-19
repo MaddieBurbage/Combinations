@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define LONGTOP 0x8000000000000000
 /* A function to help generate all binary strings of a certain weight.
  * Input the length of the binary string and the previous combination.
  * The pointer, out, will be loaded with the next combination following
@@ -14,25 +15,25 @@
  * Generation is computed using Knuth's variant on the cool pattern from
  * The Art of Computer Programming, volume 4, fascicle 3.
  */
-int nextWeightedCombination(int n, int last, int *out) {
-    int next, temp, result;
+int nextWeightedCombination(long n, unsigned long last, unsigned int *out) {
+    unsigned long next, temp, result;
     next = last & (last + 1); //Discards trailing ones
-
     temp = next ^ (next - 1); //Marks the start of the last "10"
 
     next = temp + 1;
     temp = temp & last;
 
     next = (next & last) - 1;
-    next = (next > 0)? next : 0;
+
+    next = (next < LONGTOP)? next : 0;
 
     result = last + temp - next;
 
-    if(result / (1 << n) > 0) {
+    if(result / (1L << n) > 0) {
         return -1;
     }
 
-    *out = result % (1 << n);
+    *out = result % (1L << n);
     return 1;
 }
 
@@ -40,8 +41,8 @@ int nextWeightedCombination(int n, int last, int *out) {
  * The generation is computed using the cool-er pattern from "The Coolest
  * Way to Generate Binary Strings"
  */
-int nextGeneralCombination(int n, int last, int *out) {
-  unsigned int cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, cap, first, shifted, rotated, result;
+int nextGeneralCombination(long n, unsigned long last, unsigned int *out) {
+  unsigned long cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, cap, first, shifted, rotated, result;
 
     cut = last >> 1;
     trimmed = cut | (cut - 1); //Discards trailing zeros
@@ -49,10 +50,10 @@ int nextGeneralCombination(int n, int last, int *out) {
     mask = (trailed << 1) + 1;
 
     lastTemp = trailed + 1; //Indexes the start of the last "01"
-    lastLimit = 1 << (n-1); //Indexes the length of the string
+    lastLimit = 1L << (n-1); //Indexes the length of the string
     lastPosition = (lastTemp == 0 || lastTemp > lastLimit)? lastLimit : lastTemp;
 
-    cap = 1 << n;
+    cap = 1L << n;
     first = (mask < cap)? 1 & last : 1 & ~(last); //The bit to be moved
     shifted = cut & trailed;
     rotated = (first == 1)? shifted | lastPosition : shifted;
@@ -70,15 +71,15 @@ int nextGeneralCombination(int n, int last, int *out) {
  * The generation is computed using the cool-est pattern from "The Coolest
  * Way to Generate Binary Strings"
  */
-int nextRangedCombination(int n, int last, int min, int max, int *out) {
-  unsigned int cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, disposable, count, cap, flipped, valid, first, shifted, rotated, result;
+int nextRangedCombination(long n, unsigned long last, long min, long max, unsigned int *out) {
+  unsigned long cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, disposable, count, cap, flipped, valid, first, shifted, rotated, result;
     cut = last >> 1;
     trimmed = cut | (cut - 1); //Discards trailing zeros
     trailed = trimmed ^ (trimmed + 1); //Marks the start of the last "01"
     mask = (trailed << 1) + 1;
 
     lastTemp = trailed + 1; //Indexes the start of the last "01"
-    lastLimit = 1 << (n-1); //Indexes the length of the string
+    lastLimit = 1L << (n-1); //Indexes the length of the string
     lastPosition = (lastTemp == 0 || lastTemp > lastLimit)? lastLimit : lastTemp;
 
     disposable = last; //Prepare to count bits set in the string
@@ -86,7 +87,7 @@ int nextRangedCombination(int n, int last, int min, int max, int *out) {
         disposable = disposable & (disposable - 1); //Discard the last bit set
     }
 
-    cap = 1 << n;
+    cap = 1L << n;
     flipped = 1 & ~last;
     valid = (flipped == 0)? count > min : count < max;
     first = (mask < cap || !valid)? 1 & last : flipped; //The bit to be moved
@@ -94,7 +95,7 @@ int nextRangedCombination(int n, int last, int min, int max, int *out) {
     rotated = (first == 1)? shifted | lastPosition : shifted;
     result = rotated | (~mask & last);
 
-    cap = (1 << min) - 1;
+    cap = (1L << min) - 1;
     if(result == cap) {
         return -1;
     }
@@ -103,15 +104,15 @@ int nextRangedCombination(int n, int last, int min, int max, int *out) {
     return 1;
 }
 
-static inline int timeHardware(int inputString, int length, int answer) {
-    int outputString, outputs;
+static inline int timeHardware(unsigned int inputString, int length, long answer) {
+    unsigned int outputString, outputs;
 
     outputs = 1;
 
     #if FUNCT % 4 == 0
-    length |= (WIDTH/2) << 5;
+    length |= (WIDTH/2) << 6;
     #elif FUNCT % 4 == 2
-    length |= (0 << 5) |  ((WIDTH/2) << 10);
+    length |= (0 << 6) |  ((WIDTH/2) << 12);
     #endif
     #if FUNCT < 3
     ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
@@ -122,19 +123,19 @@ static inline int timeHardware(int inputString, int length, int answer) {
         ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     }
     #else
-    long int safe[answer];
-    int i;
-    for(i = 0; i < answer; i++) {
-	safe[i] = i;
-    }
-    ROCC_INSTRUCTION_DSS(0, outputString, length, &safe[0], FUNCT);
+    unsigned long streamOut[answer/4];
+    //    long i;
+    //for(i = 0; i < answer; i++) {
+    //	streamOut[i] = i;
+    //}
+    ROCC_INSTRUCTION_DSS(0, outputString, length, &streamOut[0], FUNCT);
     outputs = outputString;
     #endif
     return outputs;
 }
 
-static inline int timeSoftware(int inputString, int length, int answer) {
-    int outputString, outputs;
+static inline int timeSoftware(unsigned int inputString, int length, long answer) {
+    unsigned int outputString, outputs;
     outputs = 1;
     #if FUNCT < 3
     while(
@@ -151,18 +152,18 @@ static inline int timeSoftware(int inputString, int length, int answer) {
 	outputs++;
     }
     #else
-    int safe[answer];
+    unsigned int streamOut[answer];
     int i = 0;
     while(
 	  #if FUNCT % 4 == 0
-	  nextWeightedCombination(length, inputString, &safe[i])
+	  nextWeightedCombination(length, inputString, &streamOut[i])
 	  #elif FUNCT % 4 == 1
-	  nextGeneralCombination(length, inputString, &safe[i])
+	  nextGeneralCombination(length, inputString, &streamOut[i])
 	  #else
-	  nextRangedCombination(length, inputString, 0, WIDTH/2, &safe[i])
+	  nextRangedCombination(length, inputString, 0, WIDTH/2, &streamOut[i])
           #endif
 	  != -1) {
-	inputString = safe[i];
+	inputString = streamOut[i];
 	//printf("%d \n", inputString);
 	i++;
     }
@@ -172,21 +173,22 @@ static inline int timeSoftware(int inputString, int length, int answer) {
 }
 
 int main(void) {
-    unsigned long startCycle, endCycle;
+    long startCycle, endCycle;
     //Set input string and the expected number of combinations
     #if FUNCT % 4 == 1 //General combinations
-    int inputString = (1 << WIDTH) - 1;
-    int answer = 1 << WIDTH;
+    unsigned long inputString = (1L << WIDTH) - 1;
+    long answer = 1L << WIDTH;
     #elif FUNCT % 4 == 0 //Fixed weight combinations
-    int inputString = (1 << WIDTH/2) - 1;
-    int lookups[] = {0,0, 2, 0, 6, 0, 20, 0, 70, 0,0,0,0,0,0,0, 12870,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,601080390};
-    int answer = lookups[WIDTH];
+    unsigned long inputString = (1L << WIDTH/2) - 1;
+    long lookups[] = {0,0, 2, 0, 6, 0, 20, 0, 70, 0,0,0,0,0, 3432,0, 12870,0,0,0,0,0,0,0, 2704156,0,0,0,0,0,0,0,601080390};
+    long answer = lookups[WIDTH];
     #else //Ranged weight combinations
-    int inputString = 0;
-    int lookups[] = {0,0, 3, 0, 11, 0, 42, 0, 163, 0,0,0,0,0,0,0, 39203,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};//2448023843};
-    int answer = lookups[WIDTH];
+    unsigned long inputString = 0;
+    long lookups[] = {0,0, 3, 0, 11, 0, 42, 0, 163, 0,0,0,0,0, 9908,0, 39203,0,0,0,0,0,0,0, 9740686,0,0,0,0,0,0,0, 2448023843};
+    long answer = lookups[WIDTH];
     #endif
-    //printf("answer %l, input %d \n", answer, inputString);
+    
+    printf("answer %lu, input %lu \n", answer, inputString);
     //Set the string's length
     int length = WIDTH;
 
