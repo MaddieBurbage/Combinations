@@ -1,7 +1,7 @@
 #!/bin/bash
 
-MAX=5
-WIDTHS=(2 4 8 14 16 24 32)
+MAX=6
+WIDTHS=(2 4 8 14 16 20 24 32)
 export FUNCT=0
 while [ $FUNCT -lt 3 ]; do
     WIDTHI=0

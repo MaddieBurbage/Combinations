@@ -123,11 +123,7 @@ static inline int timeHardware(unsigned int inputString, int length, long answer
         ROCC_INSTRUCTION_DSS(0, outputString, length, inputString, FUNCT);
     }
     #else
-    unsigned long streamOut[answer/4];
-    //    long i;
-    //for(i = 0; i < answer; i++) {
-    //	streamOut[i] = i;
-    //}
+    unsigned long streamOut[answer];
     ROCC_INSTRUCTION_DSS(0, outputString, length, &streamOut[0], FUNCT);
     outputs = outputString;
     #endif
@@ -180,15 +176,15 @@ int main(void) {
     long answer = 1L << WIDTH;
     #elif FUNCT % 4 == 0 //Fixed weight combinations
     unsigned long inputString = (1L << WIDTH/2) - 1;
-    long lookups[] = {0,0, 2, 0, 6, 0, 20, 0, 70, 0,0,0,0,0, 3432,0, 12870,0,0,0,0,0,0,0, 2704156,0,0,0,0,0,0,0,601080390};
+    long lookups[] = {0,0, 2, 0, 6, 0, 20, 0, 70, 0,0,0,0, 1716, 3432,0, 12870,0,0,0, 184756,0,0,0, 2704156,0,0,0,0,0,0,0,601080390};
     long answer = lookups[WIDTH];
     #else //Ranged weight combinations
     unsigned long inputString = 0;
-    long lookups[] = {0,0, 3, 0, 11, 0, 42, 0, 163, 0,0,0,0,0, 9908,0, 39203,0,0,0,0,0,0,0, 9740686,0,0,0,0,0,0,0, 2448023843};
+    long lookups[] = {0,0, 3, 0, 11, 0, 42, 0, 163, 0,0,0,0, 4096, 9908,0, 39203,0,0,0, 616666,0,0,0, 9740686,0,0,0,0,0,0,0, 2448023843};
     long answer = lookups[WIDTH];
     #endif
     
-    printf("answer %lu, input %lu \n", answer, inputString);
+    //printf("answer %lu, input %lu \n", answer, inputString);
     //Set the string's length
     int length = WIDTH;
 

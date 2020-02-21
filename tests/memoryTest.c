@@ -1,6 +1,7 @@
 // Tests for the general combination accelerator that stores to memory
 // (c) Maddie Burbage, 2020
 
+#define MAX 256
 
 #include "rocc.h"
 #include <stdio.h>
@@ -41,23 +42,23 @@ int nextGeneralCombination(int n, int last, int *out) {
 static inline int testAccelerator(int length) {
     int sum;
 
-    long int placeholder[64]; //long 64
+    long int placeholder[MAX]; //long 64
     int i = 0;
-    for(i; i < 64; i++) {
+    for(i; i < MAX; i++) {
 	placeholder[i] = i;
     }
     
-    length = length | (0 << 5) | (6 << 10);
-    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder[0], 5);
+    length = length | (15 << 6) | (16 << 12);
+    ROCC_INSTRUCTION_DSS(0, sum, length, &placeholder[0], 6);
 
-    for(i = 0; i < 64; i++) {
+    for(i = 0; i < MAX; i++) {
 	printf("spot %d reads %x address %x\n", i, placeholder[i], &placeholder[i]);
     }
     return sum;
 }
 
 int main(void) {
-    int length = 4;
+    int length = 16;
     int testResult = testAccelerator(length);
     return testResult;
 }
