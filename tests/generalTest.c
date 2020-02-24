@@ -11,20 +11,24 @@
  * Way to Generate Binary Strings"
  */
 int nextGeneralCombination(int n, int last, int *out) {
-    unsigned int next, mask, lastTemporary, lastLimit, lastPosition, first, shifted, rotated, result;
+    unsigned long cut, trimmed, trailed, mask, lastTemporary, lastLimit, lastPosition, cap, first, shifted, rotated, result;
 
-    next = last ^ (last + 1);
-    mask = (next > 3)? next : ~(0);
+    cut = last >> 1;
+    trimmed = cut | (cut - 1);
+    trailed = trimmed ^ (trimmed + 1);
+    mask = (trailed << 1) + 1;
 
-    lastTemporary = (mask >> 1) + 1;
-    lastLimit = 1 << (n-1);
-    lastPosition = (lastTemporary > lastLimit)? lastLimit : lastTemporary;
-    first = (next > 3)? 1 & last : 1 & ~(last);
-    shifted = (last & mask) >> 1;
+    lastTemporary = trailed + 1;
+    lastLimit = 1L << (n-1);
+    lastPosition = (lastTemporary == 0 || lastTemporary > lastLimit)? lastLimit : lastTemporary;
+
+    cap = 1L << n;
+    first = (mask < cap)? 1 & last : 1 & ~(last);
+    shifted = cut & trailed;
     rotated = (first == 1)? shifted | lastPosition : shifted;
     result = rotated | (~mask & last);
 
-    if(result == (1 << n) - 1) {
+    if(result == cap - 1) {
         return -1;
     }
 
@@ -35,13 +39,15 @@ int nextGeneralCombination(int n, int last, int *out) {
 
 
 int main(void) {
-    int inputString = 0b0;
-    int length = 4;
+    int inputString = 0b111111;
+    int length = 6;
     int answer;
+    long outputs = 0;
 
     answer=inputString;
     while(nextGeneralCombination(length, answer, &answer) != -1) {
         printf("Next: %d\n", answer);
+	outputs++;
     }
-    return 0;
+    return (2 << length) - outputs;
 }

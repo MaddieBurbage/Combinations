@@ -11,8 +11,8 @@
  * The generation is computed using the cool-est pattern from "The Coolest
  * Way to Generate Binary Strings"
  */
-int nextRangedCombination(int n, int last, int min, int max, int *out) {
-  unsigned int cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, disposable, count, cap, flipped, valid, first, shifted, rotated, result;
+int nextRangedCombination(int n, int last, int min, int max, unsigned int *out) {
+  unsigned long cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, disposable, count, cap, flipped, valid, first, shifted, rotated, result;
     cut = last >> 1;
     trimmed = cut | (cut - 1); //Discards trailing zeros
     trailed = trimmed ^ (trimmed + 1); //Marks the start of the last "01"
@@ -50,7 +50,7 @@ static inline int testAccelerator(int length, int inputString, int min, int max)
 
     mismatches = 0;
 
-    constraints = length | (min << 5) | (max << 10);
+    constraints = length | (min << 6) | (max << 12);
 
     //For each string in the sequence, compare the c output to the accelerator's
     while(nextRangedCombination(length, inputString, min, max, &answer) != -1) {

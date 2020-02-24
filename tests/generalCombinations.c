@@ -12,7 +12,7 @@
  * Way to Generate Binary Strings"
  */
 int nextGeneralCombination(int n, int last, int *out) {
-  unsigned int cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, cap, first, shifted, rotated, result;
+  unsigned long cut, trimmed, trailed, mask, lastTemp, lastLimit, lastPosition, cap, first, shifted, rotated, result;
 
     cut = last >> 1;
     trimmed = cut | (cut - 1); //Discards trailing zeros
@@ -20,7 +20,7 @@ int nextGeneralCombination(int n, int last, int *out) {
     mask = (trailed << 1) + 1;
 
     lastTemp = trailed + 1; //Indexes the start of the last "01"
-    lastLimit = 1 << (n-1); //Indexes the length of the string
+    lastLimit = 1L << (n-1); //Indexes the length of the string
     lastPosition = (lastTemp == 0 || lastTemp > lastLimit)? lastLimit : lastTemp;
 
     cap = 1 << n;
